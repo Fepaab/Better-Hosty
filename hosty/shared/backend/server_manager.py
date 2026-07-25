@@ -8,7 +8,7 @@ import re
 import shutil
 import uuid
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from hosty.shared.backend.config_manager import ConfigManager
@@ -37,6 +37,7 @@ class ServerInfo:
         self.loader_version: str = data.get("loader_version", "")
         self.ram_mb: int = data.get("ram_mb", DEFAULT_RAM_MB)
         self.java_version: int = data.get("java_version", 21)
+        self.jvm_args: str = data.get("jvm_args", "")
         self.icon_path: str = data.get("icon_path", "")
         self.created_at: str = data.get("created_at", datetime.now().isoformat())
         self.path: str = data.get("path", "")
@@ -57,6 +58,7 @@ class ServerInfo:
             "loader_version": self.loader_version,
             "ram_mb": self.ram_mb,
             "java_version": self.java_version,
+            "jvm_args": self.jvm_args,
             "icon_path": self.icon_path,
             "created_at": self.created_at,
             "path": str(self.server_dir),
@@ -112,14 +114,19 @@ class ServerManager(EventEmitter):
         return self._servers.get(server_id)
 
     def add_server(
-        self, name: str, mc_version: str, loader_version: str = "", ram_mb: int = DEFAULT_RAM_MB
+        self,
+        name: str,
+        mc_version: str,
+        loader_version: str = "",
+        ram_mb: int = DEFAULT_RAM_MB,
+        java_version: int | None = None,
     ) -> ServerInfo:
         """
         Create and register a new server.
         Does NOT install Fabric -- call install_server() separately.
         """
         server_id = str(uuid.uuid4())
-        java_ver = get_required_java_version(mc_version)
+        java_ver = java_version if java_version is not None else get_required_java_version(mc_version)
 
         info = ServerInfo(
             {
@@ -290,13 +297,10 @@ class ServerManager(EventEmitter):
 
         info.mc_version = mc_version
         info.loader_version = loader_version
-        info.java_version = java_req
         self._save()
         existing_process = self._processes.get(server_id)
         if existing_process:
-            existing_process.java_path = (
-                self.java_manager.get_java_path(java_req) or self.java_manager.get_java_for_mc(mc_version) or "java"
-            )
+            existing_process.java_path = self.java_manager.get_java_path(info.java_version) or "java"
         self.emit_on_main_thread("server-changed", server_id)
         progress(1.0, _("Server runtime updated"))
 
@@ -985,9 +989,8 @@ class ServerManager(EventEmitter):
             return None
 
         if server_id not in self._processes:
-            java_path = self.java_manager.get_java_for_mc(info.mc_version)
+            java_path = self.java_manager.get_java_path(info.java_version)
             if not java_path:
-                # Try system java as fallback
                 java_path = shutil.which("java")
 
             config = self.get_config(server_id)
@@ -1001,6 +1004,7 @@ class ServerManager(EventEmitter):
                 java_path=java_path or "java",
                 ram_mb=info.ram_mb,
                 max_players=max_players,
+                jvm_args=info.jvm_args,
             )
 
         return self._processes[server_id]
@@ -1591,12 +1595,12 @@ class ServerManager(EventEmitter):
         backups_dir = info.server_dir / "hosty-backups"
         if not backups_dir.exists():
             return
-        cutoff = datetime.now(datetime.UTC) - timedelta(days=30)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)  # noqa: UP017
         for p in backups_dir.iterdir():
             if p.suffix != ".zip":
                 continue
             try:
-                mtime = datetime.fromtimestamp(p.stat().st_mtime, tz=datetime.UTC)
+                mtime = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)  # noqa: UP017
                 if mtime < cutoff:
                     p.unlink()
             except OSError:

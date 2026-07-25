@@ -19,12 +19,13 @@ class ServerProcess(EventEmitter):
     Emits signals for output and status changes.
     """
 
-    def __init__(self, server_dir: str, java_path: str, ram_mb: int = 2048, max_players: int = 20):
+    def __init__(self, server_dir: str, java_path: str, ram_mb: int = 2048, max_players: int = 20, jvm_args: str = ""):
         super().__init__()
         self.server_dir = Path(server_dir)
         self.java_path = java_path
         self.ram_mb = ram_mb
         self.max_players = max(1, int(max_players))
+        self.jvm_args = jvm_args
         self.player_count = 0
         self._process: subprocess.Popen | None = None
         self._status = ServerStatus.STOPPED
@@ -73,10 +74,10 @@ class ServerProcess(EventEmitter):
             self.java_path,
             f"-Xmx{self.ram_mb}M",
             f"-Xms{self.ram_mb}M",
-            "-jar",
-            "fabric-server-launch.jar",
-            "nogui",
         ]
+        if self.jvm_args:
+            cmd.extend(self.jvm_args.split())
+        cmd.extend(["-jar", "fabric-server-launch.jar", "nogui"])
 
         self.status = ServerStatus.STARTING
         self.player_count = 0

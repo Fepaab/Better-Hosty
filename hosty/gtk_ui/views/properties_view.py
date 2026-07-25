@@ -24,6 +24,7 @@ from hosty.shared.utils.constants import (
 )
 
 DIFFICULTY_MODES = [*DIFFICULTIES, "hardcore"]
+COMMON_JAVA_VERSIONS = [8, 11, 16, 17, 21, 25]
 
 
 class PropertiesView(Gtk.Box):
@@ -109,6 +110,25 @@ class PropertiesView(Gtk.Box):
         resources.add(self._ram_row)
         page.add(resources)
 
+        # ===== Java Runtime Group =====
+        java_group = Adw.PreferencesGroup(title=_("Java Runtime"))
+
+        java_labels = [f"Java {v}" for v in COMMON_JAVA_VERSIONS]
+        self._java_version_row = Adw.ComboRow(
+            title=_("Java Version"),
+            model=Gtk.StringList.new(java_labels),
+        )
+        self._java_version_row.connect("notify::selected", self._on_java_version_changed)
+        java_group.add(self._java_version_row)
+
+        self._jvm_args_row = Adw.EntryRow(title=_("JVM Arguments"))
+        self._jvm_args_row.set_show_apply_button(True)
+        self._jvm_args_row.set_tooltip_text(_("Additional arguments passed to the JVM (e.g. -XX:+UseG1GC)"))
+        self._jvm_args_row.connect("apply", self._on_jvm_args_applied)
+        java_group.add(self._jvm_args_row)
+
+        page.add(java_group)
+
         # ===== World Group =====
         world = Adw.PreferencesGroup(title=_("World"))
 
@@ -161,6 +181,36 @@ class PropertiesView(Gtk.Box):
 
         self._connect_auto_save_signals()
 
+    def _on_java_version_changed(self, *_args) -> None:
+        """Save Java version selection to server info."""
+        if self._suppress_changes or not self._server_manager or not self._server_info:
+            return
+        idx = self._java_version_row.get_selected()
+        java_ver = COMMON_JAVA_VERSIONS[idx] if idx < len(COMMON_JAVA_VERSIONS) else 21
+        self._server_info.java_version = java_ver
+        self._server_manager._save()
+        self._server_manager.emit_on_main_thread("server-changed", self._server_info.id)
+        self._check_restart_banner()
+
+    def _check_restart_banner(self) -> None:
+        if not self._server_manager or not self._server_info:
+            return
+        process = self._server_manager.get_existing_process(self._server_info.id)
+        if process and process.is_running:
+            self._banner.set_revealed(True)
+
+    def _on_jvm_args_applied(self, *_args) -> None:
+        """Save JVM arguments to server info when apply button is pressed."""
+        self._save_jvm_args()
+
+    def _save_jvm_args(self) -> None:
+        if self._suppress_changes or not self._server_manager or not self._server_info:
+            return
+        self._server_info.jvm_args = self._jvm_args_row.get_text().strip()
+        self._server_manager._save()
+        self._server_manager.emit_on_main_thread("server-changed", self._server_info.id)
+        self._check_restart_banner()
+
     def _connect_auto_save_signals(self):
         for widget in self._widgets.values():
             if isinstance(widget, Adw.SpinRow):
@@ -177,6 +227,12 @@ class PropertiesView(Gtk.Box):
 
         if self._autostart_row:
             self._autostart_row.connect("notify::active", self._on_autostart_toggled)
+
+        if hasattr(self, "_jvm_args_row"):
+            self._jvm_args_row.connect("changed", self._on_jvm_args_changed)
+
+    def _on_jvm_args_changed(self, *_args) -> None:
+        self._save_jvm_args()
 
     def _on_autostart_toggled(self, row, _pspec):
         if self._suppress_changes or not self._server_manager or not self._server_info:
@@ -272,6 +328,7 @@ class PropertiesView(Gtk.Box):
         if config:
             config.load()
             self._populate()
+        self._populate_java_settings()
         self._refresh_upgrade_button()
 
     def _refresh_upgrade_button(self):
@@ -572,10 +629,6 @@ class PropertiesView(Gtk.Box):
                     if ok:
                         self._server_info.mc_version = mc_version
                         self._server_info.loader_version = loader_version
-                        try:
-                            self._server_info.java_version = get_required_java_version(mc_version)
-                        except Exception:
-                            self._server_info.java_version = 21
                         self._version_row.set_subtitle(f"{mc_version} ({loader_version})")
                         self._refresh_upgrade_button()
                         self._show_toast(msg, timeout=4)
@@ -610,6 +663,19 @@ class PropertiesView(Gtk.Box):
             return
         self._config.load()
         self._populate()
+
+    def _populate_java_settings(self):
+        """Populate Java version and JVM args from server info."""
+        if not self._server_info:
+            return
+        self._suppress_changes = True
+
+        java_ver = self._server_info.java_version
+        closest = min(COMMON_JAVA_VERSIONS, key=lambda v: abs(v - java_ver))
+        self._java_version_row.set_selected(COMMON_JAVA_VERSIONS.index(closest))
+        self._jvm_args_row.set_text(self._server_info.jvm_args)
+
+        self._suppress_changes = False
 
     def _populate(self):
         """Populate widgets from config."""

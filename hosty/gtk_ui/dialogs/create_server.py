@@ -38,6 +38,8 @@ OPTIMISATION_MODS = [
 
 DIFFICULTY_MODES = [*DIFFICULTIES, "hardcore"]
 
+COMMON_JAVA_VERSIONS = [8, 11, 16, 17, 21, 25]
+
 
 class CreateServerDialog(Adw.Dialog):
     """Dialog for creating a new Fabric Minecraft server."""
@@ -236,12 +238,14 @@ class CreateServerDialog(Adw.Dialog):
         self._fabric_version_row.set_activatable(False)
         version_group.add(self._fabric_version_row)
 
-        self._java_info_row = Adw.ActionRow(
-            title=_("Java Runtime"),
+        java_labels = [f"Java {v}" for v in COMMON_JAVA_VERSIONS]
+        self._java_version_row = Adw.ComboRow(
+            title=_("Java Version"),
             subtitle=_("Detecting..."),
+            model=Gtk.StringList.new(java_labels),
         )
-        self._java_info_row.set_activatable(False)
-        version_group.add(self._java_info_row)
+        self._java_version_row.connect("notify::selected", self._on_java_version_changed)
+        version_group.add(self._java_version_row)
 
         page.add(version_group)
 
@@ -342,23 +346,35 @@ class CreateServerDialog(Adw.Dialog):
         if idx < len(self._game_versions):
             mc_ver = self._game_versions[idx]
             java_ver = get_required_java_version(mc_ver)
-            java_mgr = self._server_manager.java_manager
-
-            available = java_mgr.is_java_available(java_ver)
-            system_ver = java_mgr.system_java_version
-
-            if available:
-                self._java_info_row.set_subtitle(_("Java {} ✓ Available").format(java_ver))
-            elif system_ver and system_ver >= java_ver:
-                self._java_info_row.set_subtitle(
-                    _("Java {} needed - system Java {} can be used").format(java_ver, system_ver)
-                )
-            else:
-                self._java_info_row.set_subtitle(
-                    _("Java {} needed - will be downloaded automatically").format(java_ver)
-                )
+            self._select_java_version(java_ver)
 
         self._validate()
+
+    def _select_java_version(self, java_ver: int) -> None:
+        """Select the closest matching Java version in the combo row."""
+        closest = min(COMMON_JAVA_VERSIONS, key=lambda v: abs(v - java_ver))
+        self._java_version_row.set_selected(COMMON_JAVA_VERSIONS.index(closest))
+        self._update_java_subtitle()
+
+    def _on_java_version_changed(self, *_args) -> None:
+        self._update_java_subtitle()
+
+    def _update_java_subtitle(self) -> None:
+        """Update the Java version row subtitle with availability info."""
+        idx = self._java_version_row.get_selected()
+        java_ver = COMMON_JAVA_VERSIONS[idx] if idx < len(COMMON_JAVA_VERSIONS) else 21
+        java_mgr = self._server_manager.java_manager
+        available = java_mgr.is_java_available(java_ver)
+        system_ver = java_mgr.system_java_version
+
+        if available:
+            self._java_version_row.set_subtitle(_("Java {} ✓ Available").format(java_ver))
+        elif system_ver and system_ver >= java_ver:
+            self._java_version_row.set_subtitle(
+                _("Java {} needed - system Java {} can be used").format(java_ver, system_ver)
+            )
+        else:
+            self._java_version_row.set_subtitle(_("Java {} needed - will be downloaded automatically").format(java_ver))
 
     def _on_cancel_clicked(self, button):
         page = self._stack.get_visible_child_name()
@@ -526,6 +542,8 @@ class CreateServerDialog(Adw.Dialog):
             else str(DEFAULT_SERVER_PROPERTIES.get("level-type", "minecraft\\:normal"))
         )
         install_optimisations = bool(self._optimise_row.get_active())
+        java_idx = self._java_version_row.get_selected()
+        java_version = COMMON_JAVA_VERSIONS[java_idx] if java_idx < len(COMMON_JAVA_VERSIONS) else 21
 
         if not name or not mc_version or not loader_version:
             return
@@ -543,6 +561,7 @@ class CreateServerDialog(Adw.Dialog):
                 mc_version,
                 loader_version,
                 ram_mb,
+                java_version,
                 seed,
                 difficulty_for_config,
                 hardcore_mode,
@@ -562,6 +581,7 @@ class CreateServerDialog(Adw.Dialog):
         mc_version,
         loader_version,
         ram_mb,
+        java_version,
         seed,
         difficulty,
         hardcore_mode,
@@ -573,7 +593,7 @@ class CreateServerDialog(Adw.Dialog):
     ):
         """Background installation thread."""
         try:
-            java_ver = get_required_java_version(mc_version)
+            java_ver = java_version
             java_mgr = self._server_manager.java_manager
             dl_mgr = self._server_manager.download_manager
 
@@ -612,6 +632,7 @@ class CreateServerDialog(Adw.Dialog):
                 mc_version=mc_version,
                 loader_version=loader_version,
                 ram_mb=ram_mb,
+                java_version=java_ver,
             )
 
             # Step 3.5: Download vanilla server.jar from Mojang

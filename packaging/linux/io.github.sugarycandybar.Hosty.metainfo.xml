@@ -45,6 +45,17 @@
   <url type="bugtracker">https://github.com/sugarycandybar/Hosty/issues</url>
   <url type="vcs-browser">https://github.com/sugarycandybar/Hosty</url>
   <releases>
+    <release version="1.7.8" date="2026-07-25">
+      <description>
+        <p>Minor bug fixes and improvements:</p>
+        <ul>
+          <li>Added offline mode toggle</li>
+          <li>Fixed world importing bug</li>
+          <li>Autodelete backups after 30 days</li>
+          <li>Added java version selection and JVM arguments</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.7" date="2026-06-22">
       <description>
         <p>Added Polish translation</p>

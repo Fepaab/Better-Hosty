@@ -660,7 +660,40 @@ class PropertiesView(Gtk.Box):
     def _on_widget_changed(self, *_args):
         if self._suppress_changes:
             return
+
+        if _args and getattr(_args[0], "_prop_key", None) == "online-mode" and not _args[0].get_active():
+            self._confirm_disable_online_mode(_args[0])
+            return
+
         self._save_properties()
+
+    def _confirm_disable_online_mode(self, row):
+        dialog = Adw.AlertDialog.new(
+            _("Disable Online Mode?"),
+            _(
+                "With online mode disabled, anyone can join your server "
+                "without a Minecraft account. This makes your server "
+                "vulnerable to unauthorized access.\n\n"
+                "Only disable this for LAN parties or testing."
+            ),
+        )
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("disable", _("Disable"))
+        dialog.set_response_appearance("disable", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(d, response):
+            if response == "disable":
+                self._save_properties()
+                self._show_toast(_("Online mode disabled"), timeout=3)
+            else:
+                self._suppress_changes = True
+                row.set_active(True)
+                self._suppress_changes = False
+
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root())
 
     def _save_properties(self):
         """Save properties to file."""

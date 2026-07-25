@@ -192,6 +192,15 @@ class CreateServerDialog(Adw.Dialog):
         self._choose_world_btn.set_child(Gtk.Image.new_from_icon_name("folder-symbolic"))
         self._choose_world_btn.connect("clicked", self._on_choose_world_folder)
         self._world_import_row.add_suffix(self._choose_world_btn)
+
+        self._remove_world_btn = Gtk.Button(valign=Gtk.Align.CENTER)
+        self._remove_world_btn.add_css_class("flat")
+        self._remove_world_btn.set_tooltip_text(_("Remove imported world"))
+        self._remove_world_btn.set_child(Gtk.Image.new_from_icon_name("window-close-symbolic"))
+        self._remove_world_btn.connect("clicked", self._on_remove_world)
+        self._remove_world_btn.set_visible(False)
+        self._world_import_row.add_suffix(self._remove_world_btn)
+
         self._world_import_row.set_activatable_widget(self._choose_world_btn)
         world_group.add(self._world_import_row)
 
@@ -425,8 +434,27 @@ class CreateServerDialog(Adw.Dialog):
                 )
             else:
                 self._world_import_row.set_subtitle(" · ".join(msg_parts))
+
+            self._choose_world_btn.set_visible(False)
+            self._remove_world_btn.set_visible(True)
+            self._world_import_row.set_activatable_widget(self._remove_world_btn)
+            self._seed_entry.set_sensitive(False)
+            self._level_type_row.set_sensitive(False)
         except GLib.Error:
             return
+
+    def _on_remove_world(self, *_args):
+        self._world_import_source_path = ""
+        self._world_import_row.set_subtitle(_("No world selected."))
+        self._seed_entry.set_text("")
+        self._seed_entry.set_sensitive(True)
+        default_level_type = str(DEFAULT_SERVER_PROPERTIES.get("level-type", "minecraft\\:normal"))
+        if default_level_type in self._level_type_values:
+            self._level_type_row.set_selected(self._level_type_values.index(default_level_type))
+        self._level_type_row.set_sensitive(True)
+        self._choose_world_btn.set_visible(True)
+        self._remove_world_btn.set_visible(False)
+        self._world_import_row.set_activatable_widget(self._choose_world_btn)
 
     def _on_page_changed(self, *_args):
         self._validate()
@@ -637,7 +665,7 @@ class CreateServerDialog(Adw.Dialog):
             self._server_manager.set_java_port(server_info.id, 25565)
 
             if world_import_source_path:
-                self._update_progress(0.90, _("Importing world folder..."))
+                self._update_progress(0.90, _("Importing world folder..."), "")
                 success, msg = self._server_manager.import_world_folder(
                     server_info.id,
                     world_import_source_path,
@@ -753,6 +781,7 @@ class CreateServerDialog(Adw.Dialog):
             self._progress_status.set_description(message)
             self._progress_bar.set_fraction(0)
             self._progress_label.set_label(_("Please try again"))
+            self._cancel_btn.set_sensitive(True)
 
         GLib.idle_add(_update)
 

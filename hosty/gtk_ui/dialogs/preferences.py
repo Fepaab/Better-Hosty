@@ -110,6 +110,17 @@ def show_preferences_window(
     autobackup_row.connect("notify::active", on_autobackup_toggled)
     group.add(autobackup_row)
 
+    autodelete_row = Adw.SwitchRow(
+        title=_("Auto-delete backups older than 30 days"),
+    )
+    autodelete_row.set_active(preferences.auto_delete_old_backups)
+
+    def on_autodelete_toggled(row, _pspec):
+        preferences.auto_delete_old_backups = row.get_active()
+
+    autodelete_row.connect("notify::active", on_autodelete_toggled)
+    group.add(autodelete_row)
+
     dep_row = Adw.SwitchRow(
         title=_("Auto resolve mod dependencies"),
     )

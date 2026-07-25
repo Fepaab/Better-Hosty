@@ -17,6 +17,7 @@ DEFAULT_SETTINGS = {
     "open_on_startup": False,
     "prevent_sleep_while_running": False,
     "auto_backup_on_stop": True,
+    "auto_delete_old_backups": True,
     "auto_resolve_mod_dependencies": True,
     "theme": "system",
     "language": "system",
@@ -93,6 +94,15 @@ class PreferencesManager:
     @auto_backup_on_stop.setter
     def auto_backup_on_stop(self, value: bool) -> None:
         self._settings["auto_backup_on_stop"] = bool(value)
+        self._save()
+
+    @property
+    def auto_delete_old_backups(self) -> bool:
+        return bool(self._settings.get("auto_delete_old_backups", True))
+
+    @auto_delete_old_backups.setter
+    def auto_delete_old_backups(self, value: bool) -> None:
+        self._settings["auto_delete_old_backups"] = bool(value)
         self._save()
 
     @property

@@ -8,7 +8,7 @@ import re
 import shutil
 import uuid
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from hosty.shared.backend.config_manager import ConfigManager
@@ -1535,6 +1535,7 @@ class ServerManager(EventEmitter):
         except Exception as e:
             return False, str(e)
 
+        self._cleanup_old_backups(server_id)
         return True, backup_path.name
 
     def create_full_backup(self, server_id: str) -> tuple[bool, str]:
@@ -1577,7 +1578,29 @@ class ServerManager(EventEmitter):
         except Exception as e:
             return False, str(e)
 
+        self._cleanup_old_backups(server_id)
         return True, backup_path.name
+
+    def _cleanup_old_backups(self, server_id: str) -> None:
+        """Remove backup zips older than 30 days if the preference is enabled."""
+        if not self.preferences.auto_delete_old_backups:
+            return
+        info = self.get_server(server_id)
+        if not info:
+            return
+        backups_dir = info.server_dir / "hosty-backups"
+        if not backups_dir.exists():
+            return
+        cutoff = datetime.now(datetime.UTC) - timedelta(days=30)
+        for p in backups_dir.iterdir():
+            if p.suffix != ".zip":
+                continue
+            try:
+                mtime = datetime.fromtimestamp(p.stat().st_mtime, tz=datetime.UTC)
+                if mtime < cutoff:
+                    p.unlink()
+            except OSError:
+                continue
 
     def restore_world_backup(self, server_id: str, zip_path: Path) -> tuple[bool, str]:
         """Restore a zip backup. If it's a full backup, it overwrites everything

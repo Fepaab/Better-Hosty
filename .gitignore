@@ -45,3 +45,6 @@ Thumbs.db
 .flatpak-builder/
 build-dir/
 repo/
+
+# Kate IDE swap files
+.*.kate-swp

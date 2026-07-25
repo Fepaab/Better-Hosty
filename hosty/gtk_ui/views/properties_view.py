@@ -152,6 +152,8 @@ class PropertiesView(Gtk.Box):
         )
         self._widgets["allow-nether"] = self._add_switch_row(advanced, _("Allow Nether"), "allow-nether", True, "")
 
+        self._widgets["online-mode"] = self._add_switch_row(advanced, _("Online Mode"), "online-mode", True, "")
+
         page.add(advanced)
 
         scrolled.set_child(page)

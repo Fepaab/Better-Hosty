@@ -16,8 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from hosty.shared.utils.net import make_ssl_context
+
 USER_AGENT = "Hosty/1.0 (+https://github.com/hosty)"
 API = "https://api.modrinth.com/v2"
+
+_SSL_CONTEXT = make_ssl_context()
 
 
 @dataclass
@@ -79,7 +83,7 @@ def _request_json(url: str, timeout: float = 30.0) -> Any:
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -104,8 +108,36 @@ def _pick_mrpack_file(files: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def _download_bytes(url: str, timeout: float = 120.0) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
         return resp.read()
+
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _is_png_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(len(_PNG_MAGIC)) == _PNG_MAGIC
+    except Exception:
+        return False
+
+
+def _normalize_icon_bytes(data: bytes) -> bytes:
+    """Return PNG-encoded icon bytes, converting other formats (e.g. WebP) via Pillow."""
+    if data.startswith(_PNG_MAGIC):
+        return data
+    try:
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(data)).convert("RGBA")
+        out = io.BytesIO()
+        img.save(out, "PNG")
+        return out.getvalue()
+    except Exception:
+        return data
 
 
 def get_icon_path(url: str, timeout: float = 20.0) -> str | None:
@@ -119,12 +151,12 @@ def get_icon_path(url: str, timeout: float = 20.0) -> str | None:
 
     hash_name = hashlib.md5(url.encode("utf-8")).hexdigest() + ".png"
     target = icon_cache_dir / hash_name
-    if target.is_file():
+    if target.is_file() and _is_png_file(target):
         return str(target)
 
     try:
         data = _download_bytes(url, timeout=timeout)
-        target.write_bytes(data)
+        target.write_bytes(_normalize_icon_bytes(data))
         return str(target)
     except Exception:
         return None

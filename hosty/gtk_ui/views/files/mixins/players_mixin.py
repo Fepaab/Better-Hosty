@@ -19,7 +19,11 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Adw, GLib, Gtk
 
+from hosty.shared.utils.net import make_ssl_context
+
 from ..utils import *
+
+_SSL_CONTEXT = make_ssl_context()
 
 
 class PlayersMixin:
@@ -185,7 +189,7 @@ class PlayersMixin:
                 f"https://api.mojang.com/users/profiles/minecraft/{quoted}",
                 headers={"User-Agent": "Hosty/1.0"},
             )
-            with urllib.request.urlopen(req, timeout=8.0) as resp:
+            with urllib.request.urlopen(req, timeout=8.0, context=_SSL_CONTEXT) as resp:
                 if resp.status == 204:
                     return name, ""
                 data = json.loads(resp.read().decode("utf-8"))

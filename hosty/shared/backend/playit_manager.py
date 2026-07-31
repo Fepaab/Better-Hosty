@@ -22,7 +22,10 @@ import requests
 
 from hosty.shared.core.events import EventEmitter
 from hosty.shared.utils.constants import DATA_DIR
+from hosty.shared.utils.net import make_ssl_context
 from hosty.shared.utils.subprocess_utils import hidden_subprocess_kwargs
+
+_SSL_CONTEXT = make_ssl_context()
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ENDPOINT_URL_RE = re.compile(r"(?:tcp|udp)://([A-Za-z0-9.-]+:\d{2,5})")
@@ -446,7 +449,7 @@ class PlayitManager(EventEmitter):
                 release_url,
                 headers={"User-Agent": "Hosty/1.0", "Accept": "application/vnd.github+json"},
             )
-            with urllib.request.urlopen(req, timeout=20.0) as resp:
+            with urllib.request.urlopen(req, timeout=20.0, context=_SSL_CONTEXT) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
 
             assets = data.get("assets") or []
@@ -465,7 +468,7 @@ class PlayitManager(EventEmitter):
             target.parent.mkdir(parents=True, exist_ok=True)
 
             req_bin = urllib.request.Request(download_url, headers={"User-Agent": "Hosty/1.0"})
-            with urllib.request.urlopen(req_bin, timeout=120.0) as resp:
+            with urllib.request.urlopen(req_bin, timeout=120.0, context=_SSL_CONTEXT) as resp:
                 payload = resp.read()
 
             with open(target, "wb") as f:

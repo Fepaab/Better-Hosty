@@ -17,4 +17,4 @@ def create_application() -> HostyApp:
     """Create the GTK frontend."""
     from hosty.gtk_ui.application import HostyApplication
 
-    return HostyApplication( )
+    return HostyApplication()

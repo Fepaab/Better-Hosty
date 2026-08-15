@@ -31,12 +31,6 @@ button.hosty-starting-button:active {
     background-color: alpha(#e5a50a, 0.20);
 }
 
-button.playit-compact-button {
-    min-height: 28px;
-    padding-top: 2px;
-    padding-bottom: 2px;
-}
-
 /* ===== Status Indicators ===== */
 .status-dot {
     min-width: 10px;

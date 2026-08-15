@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 
+import hosty.i18n  # noqa: F401
 from hosty.version import __version__
 
 # Application identity
@@ -42,11 +43,44 @@ CONFIG_FILE = DATA_DIR / "servers.json"
 for d in [DATA_DIR, SERVERS_DIR, JRES_DIR, CACHE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
+# Loaders / Server Softwares
+LOADER_FABRIC = "fabric"
+LOADER_QUILT = "quilt"
+LOADER_PAPER = "paper"
+LOADER_PURPUR = "purpur"
+LOADER_VANILLA = "vanilla"
+LOADER_FORGE = "forge"
+LOADER_NEOFORGE = "neoforge"
+
+LOADER_TYPES = [
+    {"id": LOADER_FABRIC, "name": "Fabric", "type": "mod", "icon": "fabric", "desc": "Lightweight & fast mod loader"},
+    {"id": LOADER_QUILT, "name": "Quilt", "type": "mod", "icon": "quilt", "desc": "Modern mod loader, compatible with Fabric"},
+    {"id": LOADER_PAPER, "name": "Paper", "type": "plugin", "icon": "paper", "desc": "High performance Minecraft server (Plugins)"},
+    {"id": LOADER_PURPUR, "name": "Purpur", "type": "plugin", "icon": "purpur", "desc": "Drop-in replacement for Paper with extra customization"},
+    {"id": LOADER_VANILLA, "name": "Vanilla", "type": "vanilla", "icon": "minecraft", "desc": "Official unmodified Minecraft server"},
+    {"id": LOADER_FORGE, "name": "Forge (Em breve)", "type": "mod", "icon": "forge", "desc": "Classic Minecraft modding platform"},
+    {"id": LOADER_NEOFORGE, "name": "NeoForge (Em breve)", "type": "mod", "icon": "neoforge", "desc": "Modern community fork of Forge"},
+]
+
 # Fabric Meta API
 FABRIC_META_BASE = "https://meta.fabricmc.net/v2/versions"
 FABRIC_GAME_VERSIONS_URL = f"{FABRIC_META_BASE}/game"
 FABRIC_LOADER_VERSIONS_URL = f"{FABRIC_META_BASE}/loader"
 FABRIC_INSTALLER_VERSIONS_URL = f"{FABRIC_META_BASE}/installer"
+
+# Quilt Meta API
+QUILT_META_BASE = "https://meta.quiltmc.org/v3/versions"
+QUILT_GAME_VERSIONS_URL = f"{QUILT_META_BASE}/game"
+QUILT_LOADER_VERSIONS_URL = f"{QUILT_META_BASE}/loader"
+QUILT_INSTALLER_VERSIONS_URL = f"{QUILT_META_BASE}/installer"
+
+# User-Agent para requisições HTTP
+HTTP_USER_AGENT = "Hosty/1.0 (https://github.com/sugarycandybar/Hosty)"
+
+# PaperMC & Purpur APIs
+PAPER_API_BASE = "https://fill.papermc.io/v3/projects/paper"
+PURPUR_API_BASE = "https://api.purpurmc.org/v2/purpur"
+MOJANG_VERSION_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 
 # Adoptium JRE API
 ADOPTIUM_API_BASE = "https://api.adoptium.net/v3/binary/latest"

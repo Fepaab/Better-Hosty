@@ -116,7 +116,7 @@ https://github.com/user-attachments/assets/ac84cc74-8ac9-401a-923f-6e58d6cd10e0
 	<img src="packaging/linux/screenshots/connect.png" alt="Connect view" width="900" />
 </p>
 
-- Connect: configure Playit and manage whitelist/ban lists.
+- Connect: view local IP and manage whitelist/ban lists.
 
 <p align="center">
 	<img src="packaging/linux/screenshots/backups.png" alt="Backups view" width="900" />

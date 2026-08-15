@@ -23,6 +23,16 @@ from ..utils import *
 
 
 class ModsMixin:
+    def _get_content_dir(self) -> Path | None:
+        root = self._server_dir()
+        if not root:
+            return None
+        loader = "fabric"
+        if self._server_info and hasattr(self._server_info, "loader_type"):
+            loader = str(self._server_info.loader_type).lower()
+        folder = root / ("plugins" if loader in ("paper", "purpur", "spigot") else "mods")
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
     def _begin_mod_operation(self) -> str | None:
         if not self._server_info or not self._server_manager:
             return None

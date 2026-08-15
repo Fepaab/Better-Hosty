@@ -15,10 +15,22 @@ from hosty.shared.utils.constants import (
     FABRIC_GAME_VERSIONS_URL,
     FABRIC_INSTALLER_VERSIONS_URL,
     FABRIC_LOADER_VERSIONS_URL,
+    HTTP_USER_AGENT,
+    LOADER_FABRIC,
+    LOADER_FORGE,
+    LOADER_NEOFORGE,
+    LOADER_PAPER,
+    LOADER_PURPUR,
+    LOADER_QUILT,
+    LOADER_VANILLA,
+    MOJANG_VERSION_MANIFEST_URL,
+    PAPER_API_BASE,
+    PURPUR_API_BASE,
+    QUILT_GAME_VERSIONS_URL,
+    QUILT_INSTALLER_VERSIONS_URL,
+    QUILT_LOADER_VERSIONS_URL,
 )
 from hosty.shared.utils.subprocess_utils import hidden_subprocess_kwargs
-
-MOJANG_VERSION_MANIFEST = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
 
 
 class DownloadManager:
@@ -61,6 +73,96 @@ class DownloadManager:
         except Exception as e:
             print(f"Failed to fetch loader versions: {e}")
             return []
+
+    def fetch_game_versions_for_loader(
+        self, loader_type: str = LOADER_FABRIC, include_snapshots: bool = False
+    ) -> list[str]:
+        """Fetch game versions compatible with the given loader."""
+        if loader_type == LOADER_QUILT:
+            try:
+                resp = requests.get(QUILT_GAME_VERSIONS_URL, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                return [v["version"] for v in data if include_snapshots or v.get("stable", False)]
+            except Exception as e:
+                print(f"Failed to fetch Quilt game versions: {e}")
+                return self.fetch_game_versions(include_snapshots)
+        elif loader_type == LOADER_PAPER:
+            try:
+                headers = {"User-Agent": HTTP_USER_AGENT}
+                resp = requests.get(PAPER_API_BASE, headers=headers, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                vers_dict = data.get("versions", {})
+                all_vers = []
+                if isinstance(vers_dict, dict):
+                    for group_vers in vers_dict.values():
+                        if isinstance(group_vers, list):
+                            for v in group_vers:
+                                if include_snapshots or not ("-rc" in v or "-pre" in v):
+                                    all_vers.append(v)
+                all_vers.reverse()
+                return all_vers
+            except Exception as e:
+                print(f"Failed to fetch Paper game versions: {e}")
+                return []
+        elif loader_type == LOADER_PURPUR:
+            try:
+                resp = requests.get(PURPUR_API_BASE, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                versions = data.get("versions", [])
+                versions.reverse()
+                return versions
+            except Exception as e:
+                print(f"Failed to fetch Purpur game versions: {e}")
+                return []
+        elif loader_type == LOADER_VANILLA:
+            manifest = self._fetch_mojang_manifest()
+            if not manifest:
+                return []
+            versions = []
+            for entry in manifest.get("versions", []):
+                if include_snapshots or entry.get("type") == "release":
+                    versions.append(entry.get("id"))
+            return versions
+
+        return self.fetch_game_versions(include_snapshots)
+
+    def fetch_loader_versions_for_loader(
+        self, loader_type: str = LOADER_FABRIC, mc_version: str = ""
+    ) -> list[str]:
+        """Fetch loader versions/builds for a specific loader and game version."""
+        if loader_type == LOADER_QUILT:
+            try:
+                resp = requests.get(QUILT_LOADER_VERSIONS_URL, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                return [v["version"] for v in data]
+            except Exception as e:
+                print(f"Failed to fetch Quilt loader versions: {e}")
+                return []
+        elif loader_type == LOADER_PAPER:
+            if not mc_version:
+                return []
+            try:
+                headers = {"User-Agent": HTTP_USER_AGENT}
+                resp = requests.get(f"{PAPER_API_BASE}/versions/{mc_version}/builds", headers=headers, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                if isinstance(data, list):
+                    builds = [str(b.get("id")) for b in data if isinstance(b, dict) and "id" in b]
+                    return builds
+                return []
+            except Exception as e:
+                print(f"Failed to fetch Paper builds for {mc_version}: {e}")
+                return []
+        elif loader_type == LOADER_PURPUR:
+            return ["latest"]
+        elif loader_type == LOADER_VANILLA:
+            return []
+
+        return self.fetch_loader_versions()
 
     def fetch_installer_info(self) -> tuple[str | None, str | None]:
         """
@@ -133,7 +235,7 @@ class DownloadManager:
         if self._mojang_manifest:
             return self._mojang_manifest
         try:
-            resp = requests.get(MOJANG_VERSION_MANIFEST, timeout=15)
+            resp = requests.get(MOJANG_VERSION_MANIFEST_URL, timeout=15)
             resp.raise_for_status()
             self._mojang_manifest = resp.json()
             return self._mojang_manifest
@@ -312,6 +414,191 @@ class DownloadManager:
             return False, _("Installation timed out (5 minutes)")
         except Exception as e:
             return False, _("Installation error: {}").format(e)
+
+    # ----- Quilt / Paper / Purpur / Vanilla installation -----
+
+    def download_quilt_installer(
+        self, progress_callback: Callable[[float, str], None] | None = None
+    ) -> str | None:
+        """Download latest Quilt installer JAR."""
+        try:
+            resp = requests.get(QUILT_INSTALLER_VERSIONS_URL, timeout=15)
+            resp.raise_for_status()
+            installers = resp.json()
+            if not installers:
+                return None
+            latest = installers[0]
+            url = latest.get("url")
+            version = latest.get("version")
+            if not url:
+                return None
+
+            cached_jar = CACHE_DIR / f"quilt-installer-{version}.jar"
+            if cached_jar.exists():
+                if progress_callback:
+                    progress_callback(1.0, _("Using cached Quilt installer"))
+                return str(cached_jar)
+
+            if progress_callback:
+                progress_callback(0.0, _("Downloading Quilt installer..."))
+
+            resp = requests.get(url, stream=True, timeout=60)
+            resp.raise_for_status()
+
+            with open(cached_jar, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            return str(cached_jar)
+        except Exception as e:
+            print(f"Failed to download Quilt installer: {e}")
+            return None
+
+    def install_quilt_server(
+        self,
+        java_path: str,
+        installer_jar: str,
+        mc_version: str,
+        server_dir: str,
+        loader_version: str | None = None,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str]:
+        """Run Quilt installer to set up a server."""
+        import subprocess
+
+        Path(server_dir).mkdir(parents=True, exist_ok=True)
+        cmd = [
+            java_path,
+            "-jar",
+            installer_jar,
+            "install",
+            "server",
+            mc_version,
+        ]
+        if loader_version:
+            cmd.append(loader_version)
+        cmd.extend([
+            f"--install-dir={server_dir}",
+            "--download-server",
+        ])
+
+        if progress_callback:
+            progress_callback(0.5, _("Installing Quilt server for MC {}...").format(mc_version))
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=server_dir,
+                **hidden_subprocess_kwargs(),
+            )
+            if result.returncode == 0:
+                if progress_callback:
+                    progress_callback(1.0, _("Quilt server installed successfully"))
+                return True, _("Installation successful")
+            else:
+                error_msg = result.stderr or result.stdout or _("Unknown error")
+                return False, _("Installation failed: {}").format(error_msg)
+        except Exception as e:
+            return False, _("Installation error: {}").format(e)
+
+    def install_paper_server(
+        self,
+        mc_version: str,
+        server_dir: str,
+        build: str | None = None,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str]:
+        """Download Paper server JAR from PaperMC v3 API."""
+        Path(server_dir).mkdir(parents=True, exist_ok=True)
+        dest = Path(server_dir) / "paper.jar"
+        headers = {"User-Agent": HTTP_USER_AGENT}
+        try:
+            build_str = str(build or "").strip()
+            if progress_callback:
+                progress_callback(0.2, _("Fetching Paper build details for MC {}...").format(mc_version))
+
+            resp = requests.get(f"{PAPER_API_BASE}/versions/{mc_version}/builds", headers=headers, timeout=15)
+            resp.raise_for_status()
+            builds = resp.json()
+            if not isinstance(builds, list) or not builds:
+                return False, _("No Paper builds found for MC {}").format(mc_version)
+
+            target_build = None
+            if build_str and build_str.isdigit():
+                target_build = next((b for b in builds if str(b.get("id")) == build_str), None)
+            if not target_build:
+                target_build = builds[0]
+
+            downloads = target_build.get("downloads", {})
+            server_default = downloads.get("server:default", {})
+            download_url = server_default.get("url")
+            if not download_url:
+                return False, _("Paper download URL not found")
+
+            if progress_callback:
+                progress_callback(0.4, _("Downloading Paper JAR..."))
+
+            resp = requests.get(download_url, stream=True, headers=headers, timeout=120)
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0))
+            downloaded = 0
+
+            with open(dest, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total > 0 and progress_callback:
+                        frac = 0.4 + (downloaded / total) * 0.6
+                        progress_callback(
+                            frac, _("Downloading Paper... {:.1f} MB").format(downloaded / (1024 * 1024))
+                        )
+
+            if progress_callback:
+                progress_callback(1.0, _("Paper installed successfully"))
+            return True, _("Paper installed successfully")
+        except Exception as e:
+            dest.unlink(missing_ok=True)
+            return False, _("Failed to download Paper: {}").format(e)
+
+    def install_purpur_server(
+        self,
+        mc_version: str,
+        server_dir: str,
+        build: str | None = None,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str]:
+        """Download Purpur server JAR from Purpur API."""
+        Path(server_dir).mkdir(parents=True, exist_ok=True)
+        dest = Path(server_dir) / "purpur.jar"
+        download_url = f"{PURPUR_API_BASE}/{mc_version}/latest/download"
+        try:
+            if progress_callback:
+                progress_callback(0.2, _("Downloading Purpur JAR for MC {}...").format(mc_version))
+
+            resp = requests.get(download_url, stream=True, timeout=120)
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0))
+            downloaded = 0
+
+            with open(dest, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total > 0 and progress_callback:
+                        frac = 0.2 + (downloaded / total) * 0.8
+                        progress_callback(
+                            frac, _("Downloading Purpur... {:.1f} MB").format(downloaded / (1024 * 1024))
+                        )
+
+            if progress_callback:
+                progress_callback(1.0, _("Purpur installed successfully"))
+            return True, _("Purpur installed successfully")
+        except Exception as e:
+            dest.unlink(missing_ok=True)
+            return False, _("Failed to download Purpur: {}").format(e)
 
     def fetch_all_versions_async(self, callback: Callable[[list[str], list[str]], None]):
         """

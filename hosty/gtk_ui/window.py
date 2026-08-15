@@ -13,7 +13,6 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk
 from hosty.gtk_ui.views.server_detail import ServerDetailView
 from hosty.gtk_ui.views.sidebar import Sidebar
 from hosty.gtk_ui.views.welcome_view import WelcomeView
-from hosty.shared.backend.playit_config import load_playit_config
 from hosty.shared.backend.server_manager import ServerManager
 from hosty.shared.utils.constants import APP_ID
 
@@ -27,8 +26,6 @@ class HostyWindow(Adw.ApplicationWindow):
         self._current_server_id = None
         self._status_poll_id = None
         self._running_server_ids: set[str] = set(self._server_manager.get_running_server_ids())
-        self._playit_starting_server_ids: set[str] = set()
-        self._playit_autostart_paused_ids: set[str] = set()
 
         self.set_title(_("Hosty"))
         try:
@@ -224,87 +221,13 @@ class HostyWindow(Adw.ApplicationWindow):
         # Servers that stopped since last poll
         stopped_ids = previous_ids - current_ids
         for sid in stopped_ids:
-            self._apply_playit_runtime(sid, "stop")
             prefs = self._server_manager.preferences
             if prefs.auto_backup_on_stop:
                 self._start_auto_backup(sid)
 
-        # Servers that started since last poll
-        started_ids = current_ids - previous_ids
-        for sid in started_ids:
-            self._apply_playit_runtime(sid, "start")
-
-        # Keep playit in sync for all running servers
-        for sid in current_ids:
-            self._apply_playit_runtime(sid, None)
-
         return True
 
-    def _load_playit_config(self, server_id: str) -> dict:
-        info = self._server_manager.get_server(server_id)
-        if not info:
-            return {}
-        return load_playit_config(info.server_dir)
 
-    def _apply_playit_runtime(self, server_id: str, action: str | None):
-        playit = self._server_manager.playit_manager
-
-        # Handle explicit stop action
-        if action == "stop":
-            if playit.is_running_for(server_id):
-                playit.stop_server(server_id)
-            self._playit_autostart_paused_ids.discard(server_id)
-            self._playit_starting_server_ids.discard(server_id)
-            return
-
-        # Handle explicit start action or keep-alive check
-        if server_id in self._playit_autostart_paused_ids:
-            return
-
-        cfg = self._load_playit_config(server_id)
-        if not cfg.get("enabled", False):
-            return
-        if not cfg.get("auto_start", True):
-            return
-
-        if playit.is_running_for(server_id):
-            return
-
-        if server_id in self._playit_starting_server_ids:
-            return
-
-        info = self._server_manager.get_server(server_id)
-        if not info:
-            return
-
-        self._playit_starting_server_ids.add(server_id)
-
-        def worker():
-            ok, _msg = playit.start(
-                server_id,
-                str(info.server_dir),
-                secret=str(cfg.get("secret", "")).strip(),
-                auto_install=bool(cfg.get("auto_install", True)),
-            )
-            if ok:
-                fresh_cfg = self._load_playit_config(server_id)
-                br_port = int(fresh_cfg.get("bedrock_port", 19132))
-                vc_port = int(fresh_cfg.get("voicechat_port", 24454))
-                playit.verify_playit_mod_configs(
-                    str(info.server_dir),
-                    server_id,
-                    bedrock_endpoint=str(fresh_cfg.get("bedrock_endpoint", "")).strip(),
-                    voicechat_endpoint=str(fresh_cfg.get("voicechat_endpoint", "")).strip(),
-                    bedrock_port=br_port,
-                    voicechat_port=vc_port,
-                )
-
-            def clear_starting_flag():
-                self._playit_starting_server_ids.discard(server_id)
-
-            GLib.idle_add(clear_starting_flag)
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _start_auto_backup(self, server_id: str):
         def worker():
@@ -336,11 +259,7 @@ class HostyWindow(Adw.ApplicationWindow):
                 toast.connect("button-clicked", lambda *_args: on_button())
         self._toast_overlay.add_toast(toast)
 
-    def pause_playit_auto_start_for_running_server(self, server_id: str):
-        self._playit_autostart_paused_ids.add(server_id)
 
-    def clear_playit_auto_start_pause(self, server_id: str):
-        self._playit_autostart_paused_ids.discard(server_id)
 
     @property
     def sidebar(self):

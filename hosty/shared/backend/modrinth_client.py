@@ -213,14 +213,19 @@ def search_mods(
     if qtext:
         base["query"] = qtext
     ptype = (project_type or "mod").strip().lower()
-    if ptype not in {"mod", "modpack", "datapack"}:
+    ldr = (loader or "fabric").strip().lower()
+    if ldr in {"paper", "purpur", "spigot"}:
+        if ptype == "mod":
+            ptype = "plugin"
+    if ptype not in {"mod", "plugin", "modpack", "datapack"}:
         ptype = "mod"
 
     if ptype == "datapack":
-        # Datapacks are a first-class project_type on Modrinth -- no loader facet needed.
         facets_raw: list[list[str]] = [["project_type:datapack"]]
+    elif ptype == "plugin":
+        facets_raw: list[list[str]] = [["project_type:plugin"]]
     else:
-        facets_raw: list[list[str]] = [[f"project_type:{ptype}"], [f"categories:{loader}"]]
+        facets_raw: list[list[str]] = [[f"project_type:{ptype}"], [f"categories:{ldr}"]]
 
     if ptype == "modpack":
         facets_raw.append(["server_side:required", "server_side:optional", "server_side:unknown"])
@@ -392,11 +397,20 @@ def find_compatible_versions(
         return []
 
     loader_l = loader.lower()
-    exact = [v for v in all_versions if game_version in v.game_versions and loader_l in [x.lower() for x in v.loaders]]
+    valid_loaders = {loader_l}
+    if loader_l == "quilt":
+        valid_loaders.add("fabric")
+    elif loader_l in ("paper", "purpur"):
+        valid_loaders.update({"paper", "spigot", "purpur"})
+
+    def loader_match(v_loaders: list[str]) -> bool:
+        return bool(valid_loaders.intersection([x.lower() for x in v_loaders]))
+
+    exact = [v for v in all_versions if game_version in v.game_versions and loader_match(v.loaders)]
     if exact:
         return exact[:limit]
 
-    loader_only = [v for v in all_versions if loader_l in [x.lower() for x in v.loaders]]
+    loader_only = [v for v in all_versions if loader_match(v.loaders)]
     if loader_only:
         return loader_only[:limit]
 

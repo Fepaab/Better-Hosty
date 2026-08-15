@@ -1,5 +1,5 @@
 """
-ConnectView - Server connection tools (playit.gg tunnel).
+ConnectView - Player management mixin.
 """
 
 from __future__ import annotations
@@ -19,8 +19,6 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Adw, GLib, Gtk
 
 from hosty.shared.utils.net import make_ssl_context
-
-PLAYIT_DASHBOARD_URL = "https://playit.gg/account/tunnels"
 
 _SSL_CONTEXT = make_ssl_context()
 

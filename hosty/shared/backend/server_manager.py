@@ -14,14 +14,19 @@ from pathlib import Path
 from hosty.shared.backend.config_manager import ConfigManager
 from hosty.shared.backend.download_manager import DownloadManager
 from hosty.shared.backend.java_manager import JavaManager
-from hosty.shared.backend.playit_config import load_playit_config
-from hosty.shared.backend.playit_manager import PlayitManager
 from hosty.shared.backend.preferences_manager import PreferencesManager
 from hosty.shared.backend.server_process import ServerProcess
 from hosty.shared.core.events import EventEmitter
 from hosty.shared.utils.constants import (
     CONFIG_FILE,
     DEFAULT_RAM_MB,
+    LOADER_FABRIC,
+    LOADER_FORGE,
+    LOADER_NEOFORGE,
+    LOADER_PAPER,
+    LOADER_PURPUR,
+    LOADER_QUILT,
+    LOADER_VANILLA,
     SERVERS_DIR,
     get_required_java_version,
 )
@@ -34,6 +39,7 @@ class ServerInfo:
         self.id: str = data.get("id", str(uuid.uuid4()))
         self.name: str = data.get("name", _("Unnamed Server"))
         self.mc_version: str = data.get("mc_version", "")
+        self.loader_type: str = data.get("loader_type", LOADER_FABRIC)
         self.loader_version: str = data.get("loader_version", "")
         self.ram_mb: int = data.get("ram_mb", DEFAULT_RAM_MB)
         self.java_version: int = data.get("java_version", 21)
@@ -55,6 +61,7 @@ class ServerInfo:
             "id": self.id,
             "name": self.name,
             "mc_version": self.mc_version,
+            "loader_type": self.loader_type,
             "loader_version": self.loader_version,
             "ram_mb": self.ram_mb,
             "java_version": self.java_version,
@@ -78,7 +85,6 @@ class ServerManager(EventEmitter):
         self._mods_operation_counts: dict[str, int] = {}
         self.java_manager = JavaManager()
         self.download_manager = DownloadManager()
-        self.playit_manager = PlayitManager()
         self.preferences = PreferencesManager()
         self._load()
 
@@ -117,13 +123,14 @@ class ServerManager(EventEmitter):
         self,
         name: str,
         mc_version: str,
+        loader_type: str = LOADER_FABRIC,
         loader_version: str = "",
         ram_mb: int = DEFAULT_RAM_MB,
         java_version: int | None = None,
     ) -> ServerInfo:
         """
         Create and register a new server.
-        Does NOT install Fabric -- call install_server() separately.
+        Does NOT install server runtime -- call install_server() separately.
         """
         server_id = str(uuid.uuid4())
         java_ver = java_version if java_version is not None else get_required_java_version(mc_version)
@@ -133,6 +140,7 @@ class ServerManager(EventEmitter):
                 "id": server_id,
                 "name": name,
                 "mc_version": mc_version,
+                "loader_type": loader_type,
                 "loader_version": loader_version,
                 "ram_mb": ram_mb,
                 "java_version": java_ver,
@@ -251,40 +259,107 @@ class ServerManager(EventEmitter):
             if not ok:
                 return False, _("Failed to download Java {}: {}").format(java_req, msg)
 
-        progress(0.28, _("Downloading Fabric installer"))
-        installer_path = self.download_manager.download_installer(
-            progress_callback=lambda f, text: progress(0.28 + f * 0.12, text),
-        )
-        if not installer_path:
-            return False, _("Failed to download Fabric installer")
+        loader_type = info.loader_type.lower()
+        if loader_type == LOADER_FABRIC:
+            progress(0.28, _("Downloading Fabric installer"))
+            installer_path = self.download_manager.download_installer(
+                progress_callback=lambda f, text: progress(0.28 + f * 0.12, text),
+            )
+            if not installer_path:
+                return False, _("Failed to download Fabric installer")
 
-        for filename in ("server.jar", "fabric-server-launch.jar"):
-            try:
-                (root / filename).unlink(missing_ok=True)
-            except Exception:
-                pass
+            for filename in ("server.jar", "fabric-server-launch.jar"):
+                try:
+                    (root / filename).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
-        progress(0.42, _("Downloading Minecraft {} server").format(mc_version))
-        ok, msg = self.download_manager.download_server_jar(
-            mc_version,
-            str(root),
-            progress_callback=lambda f, text: progress(0.42 + f * 0.22, text),
-        )
-        if not ok:
-            return False, msg
+            progress(0.42, _("Downloading Minecraft {} server").format(mc_version))
+            ok, msg = self.download_manager.download_server_jar(
+                mc_version,
+                str(root),
+                progress_callback=lambda f, text: progress(0.42 + f * 0.22, text),
+            )
+            if not ok:
+                return False, msg
 
-        java_path = self.java_manager.get_java_path(java_req) or self.java_manager.get_java_for_mc(mc_version) or "java"
-        progress(0.66, _("Installing Fabric server"))
-        ok, msg = self.download_manager.install_fabric_server(
-            java_path=java_path,
-            installer_jar=installer_path,
-            mc_version=mc_version,
-            server_dir=str(root),
-            loader_version=loader_version or None,
-            progress_callback=lambda f, text: progress(0.66 + f * 0.30, text),
-        )
-        if not ok:
-            return False, msg
+            java_path = self.java_manager.get_java_path(java_req) or self.java_manager.get_java_for_mc(mc_version) or "java"
+            progress(0.66, _("Installing Fabric server"))
+            ok, msg = self.download_manager.install_fabric_server(
+                java_path=java_path,
+                installer_jar=installer_path,
+                mc_version=mc_version,
+                server_dir=str(root),
+                loader_version=loader_version or None,
+                progress_callback=lambda f, text: progress(0.66 + f * 0.30, text),
+            )
+            if not ok:
+                return False, msg
+
+        elif loader_type == LOADER_QUILT:
+            progress(0.28, _("Downloading Quilt installer"))
+            installer_path = self.download_manager.download_quilt_installer(
+                progress_callback=lambda f, text: progress(0.28 + f * 0.12, text),
+            )
+            if not installer_path:
+                return False, _("Failed to download Quilt installer")
+
+            progress(0.40, _("Downloading Minecraft {} server").format(mc_version))
+            ok, msg = self.download_manager.download_server_jar(
+                mc_version,
+                str(root),
+                progress_callback=lambda f, text: progress(0.40 + f * 0.20, text),
+            )
+            if not ok:
+                return False, msg
+
+            java_path = self.java_manager.get_java_path(java_req) or self.java_manager.get_java_for_mc(mc_version) or "java"
+            progress(0.60, _("Installing Quilt server"))
+            ok, msg = self.download_manager.install_quilt_server(
+                java_path=java_path,
+                installer_jar=installer_path,
+                mc_version=mc_version,
+                server_dir=str(root),
+                loader_version=loader_version or None,
+                progress_callback=lambda f, text: progress(0.60 + f * 0.30, text),
+            )
+            if not ok:
+                return False, msg
+
+        elif loader_type == LOADER_PAPER:
+            progress(0.30, _("Downloading Paper server"))
+            ok, msg = self.download_manager.install_paper_server(
+                mc_version=mc_version,
+                server_dir=str(root),
+                build=loader_version or None,
+                progress_callback=lambda f, text: progress(0.30 + f * 0.60, text),
+            )
+            if not ok:
+                return False, msg
+
+        elif loader_type == LOADER_PURPUR:
+            progress(0.30, _("Downloading Purpur server"))
+            ok, msg = self.download_manager.install_purpur_server(
+                mc_version=mc_version,
+                server_dir=str(root),
+                build=loader_version or None,
+                progress_callback=lambda f, text: progress(0.30 + f * 0.60, text),
+            )
+            if not ok:
+                return False, msg
+
+        elif loader_type in (LOADER_FORGE, LOADER_NEOFORGE):
+            return False, _("Forge and NeoForge installer is coming in the next update. Please select Paper, Purpur, Fabric, Quilt, or Vanilla.")
+
+        elif loader_type == LOADER_VANILLA:
+            progress(0.30, _("Downloading Vanilla server"))
+            ok, msg = self.download_manager.download_server_jar(
+                mc_version=mc_version,
+                server_dir=str(root),
+                progress_callback=lambda f, text: progress(0.30 + f * 0.60, text),
+            )
+            if not ok:
+                return False, msg
 
         progress(0.90, _("Checking installed content compatibility"))
         plan = compatibility_plan or self.scan_update_compatibility(server_id, mc_version)
@@ -963,9 +1038,6 @@ class ServerManager(EventEmitter):
         if not info:
             return
 
-        if self.playit_manager.is_running_for(server_id):
-            self.playit_manager.stop_server(server_id)
-
         # Stop if running
         process = self._processes.get(server_id)
         if process and process.is_running:
@@ -1005,6 +1077,7 @@ class ServerManager(EventEmitter):
                 ram_mb=info.ram_mb,
                 max_players=max_players,
                 jvm_args=info.jvm_args,
+                loader_type=info.loader_type,
             )
 
         return self._processes[server_id]
@@ -1051,46 +1124,18 @@ class ServerManager(EventEmitter):
         return ports
 
     def get_used_bedrock_ports(self) -> set[int]:
-        """Return the set of bedrock ports configured across all servers."""
-        ports: set[int] = set()
-        for sid, info in self._servers.items():
-            try:
-                cfg = load_playit_config(info.server_dir)
-                port = int(cfg.get("bedrock_port", 19132))
-                if 1024 <= port <= 65535:
-                    ports.add(port)
-            except Exception:
-                pass
-        return ports
+        """Return empty set as Playit tunneling is disabled."""
+        return set()
 
     def get_used_voicechat_ports(self) -> set[int]:
-        """Return the set of voicechat ports configured across all servers."""
-        ports: set[int] = set()
-        for sid, info in self._servers.items():
-            try:
-                cfg = load_playit_config(info.server_dir)
-                port = int(cfg.get("voicechat_port", 24454))
-                if 1024 <= port <= 65535:
-                    ports.add(port)
-            except Exception:
-                pass
-        return ports
+        """Return empty set as Playit tunneling is disabled."""
+        return set()
 
     def get_next_available_bedrock_port(self) -> int:
-        """Find the next unused bedrock port starting from 19132."""
-        used = self.get_used_bedrock_ports()
-        port = 19132
-        while port in used:
-            port += 1
-        return port
+        return 19132
 
     def get_next_available_voicechat_port(self) -> int:
-        """Find the next unused voicechat port starting from 24454."""
-        used = self.get_used_voicechat_ports()
-        port = 24454
-        while port in used:
-            port += 1
-        return port
+        return 24454
 
     def get_next_available_port(self, base: int = 25565) -> int:
         """Find the next unused port starting from base."""
@@ -1112,111 +1157,31 @@ class ServerManager(EventEmitter):
             cfg.save()
 
     def get_bedrock_port(self, server_id: str) -> int:
-        """Read the bedrock port from the server's playit config."""
-        info = self._servers.get(server_id)
-        if not info:
-            return 19132
-        try:
-            cfg = load_playit_config(info.server_dir)
-            return int(cfg.get("bedrock_port", 19132))
-        except Exception:
-            return 19132
+        return 19132
 
     def get_voicechat_port(self, server_id: str) -> int:
-        """Read the voicechat port from the server's playit config."""
-        info = self._servers.get(server_id)
-        if not info:
-            return 24454
-        try:
-            cfg = load_playit_config(info.server_dir)
-            return int(cfg.get("voicechat_port", 24454))
-        except Exception:
-            return 24454
+        return 24454
 
     def set_bedrock_port(self, server_id: str, port: int) -> None:
-        """Set the bedrock port in the server's playit config."""
-        info = self._servers.get(server_id)
-        if not info:
-            return
-        from hosty.shared.backend.playit_config import save_playit_config
-
-        cfg = load_playit_config(info.server_dir)
-        cfg["bedrock_port"] = port
-        save_playit_config(info.server_dir, cfg)
+        pass
 
     def set_voicechat_port(self, server_id: str, port: int) -> None:
-        """Set the voicechat port in the server's playit config."""
-        info = self._servers.get(server_id)
-        if not info:
-            return
-        from hosty.shared.backend.playit_config import save_playit_config
-
-        cfg = load_playit_config(info.server_dir)
-        cfg["voicechat_port"] = port
-        save_playit_config(info.server_dir, cfg)
+        pass
 
     def check_bedrock_port_conflict(self, server_id: str) -> int | None:
-        """Return the port if another running server uses the same bedrock port."""
-        port = self.get_bedrock_port(server_id)
-        if not self.has_bedrock_tunnel(server_id):
-            for sid in self._servers:
-                if sid != server_id and self.has_bedrock_tunnel(sid):
-                    break
-            else:
-                return None
-        for sid, info in self._servers.items():
-            if sid == server_id:
-                continue
-            proc = self._processes.get(sid)
-            if not proc or not proc.is_running:
-                continue
-            if self.get_bedrock_port(sid) == port:
-                return port
         return None
 
     def check_voicechat_port_conflict(self, server_id: str) -> int | None:
-        """Return the port if another running server uses the same voicechat port."""
-        port = self.get_voicechat_port(server_id)
-        if not self.has_voicechat_tunnel(server_id):
-            for sid in self._servers:
-                if sid != server_id and self.has_voicechat_tunnel(sid):
-                    break
-            else:
-                return None
-        for sid, info in self._servers.items():
-            if sid == server_id:
-                continue
-            proc = self._processes.get(sid)
-            if not proc or not proc.is_running:
-                continue
-            if self.get_voicechat_port(sid) == port:
-                return port
         return None
 
     def resolve_playit_port_conflicts(self, server_id: str) -> None:
-        """No-op: port conflicts are no longer auto-resolved."""
+        pass
 
     def has_bedrock_tunnel(self, server_id: str) -> bool:
-        """Check if a server has a bedrock tunnel configured."""
-        info = self._servers.get(server_id)
-        if not info:
-            return False
-        try:
-            cfg = load_playit_config(info.server_dir)
-            return bool(str(cfg.get("bedrock_endpoint", "")).strip())
-        except Exception:
-            return False
+        return False
 
     def has_voicechat_tunnel(self, server_id: str) -> bool:
-        """Check if a server has a voicechat tunnel configured."""
-        info = self._servers.get(server_id)
-        if not info:
-            return False
-        try:
-            cfg = load_playit_config(info.server_dir)
-            return bool(str(cfg.get("voicechat_endpoint", "")).strip())
-        except Exception:
-            return False
+        return False
 
     def check_port_conflict(self, server_id: str) -> int | None:
         """Return the conflicting port if another running server uses this server's port, else None."""
@@ -1276,7 +1241,6 @@ class ServerManager(EventEmitter):
 
     def stop_all(self):
         """Stop all running servers."""
-        self.playit_manager.stop()
         for server_id, process in self._processes.items():
             if process.is_running:
                 process.stop()

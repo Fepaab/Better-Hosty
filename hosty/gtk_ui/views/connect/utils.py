@@ -1,5 +1,5 @@
 """
-ConnectView - Server connection tools (playit.gg tunnel).
+ConnectView - Server connection tools and utilities.
 """
 
 from __future__ import annotations
@@ -16,8 +16,6 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gtk
 
 from hosty.shared.utils.subprocess_utils import hidden_subprocess_kwargs
-
-PLAYIT_DASHBOARD_URL = "https://playit.gg/account/tunnels"
 
 
 __all__ = [

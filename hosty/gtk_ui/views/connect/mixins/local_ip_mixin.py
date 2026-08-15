@@ -1,5 +1,5 @@
 """
-ConnectView - Server connection tools (playit.gg tunnel).
+ConnectView - Local IP connection mixin.
 """
 
 from __future__ import annotations
@@ -12,8 +12,6 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Adw, Gdk, Gtk
-
-PLAYIT_DASHBOARD_URL = "https://playit.gg/account/tunnels"
 
 
 from ..utils import *

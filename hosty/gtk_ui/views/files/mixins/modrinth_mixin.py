@@ -431,37 +431,7 @@ class ModrinthMixin:
             i += 1
 
     def _configure_known_mod_after_download(self, hit) -> None:
-        if not self._server_manager or not self._server_info:
-            return
-        slug = str(getattr(hit, "slug", "") or "").strip().lower()
-        title = str(getattr(hit, "title", "") or "").strip().lower()
-        project_id = str(getattr(hit, "project_id", "") or "").strip().lower()
-        identifiers = {slug, title.replace(" ", "-"), project_id}
-        playit = self._server_manager.playit_manager
-        server_dir = str(self._server_info.server_dir)
-
-        if "geyser" in identifiers:
-            playit.configure_geyser_mod(server_dir)
-            return
-
-        if "floodgate" in identifiers:
-            playit.configure_floodgate_mod(server_dir)
-            return
-
-        if "simple-voice-chat" in identifiers or "voice-chat" in identifiers:
-            try:
-                from hosty.shared.backend.playit_config import load_playit_config
-
-                cfg = load_playit_config(self._server_info.server_dir)
-                endpoint = str(cfg.get("voicechat_endpoint", "")).strip()
-            except Exception:
-                endpoint = ""
-            playit.configure_voicechat_mod(
-                server_dir,
-                self._server_info.id,
-                endpoint=endpoint,
-                voicechat_port=int(cfg.get("voicechat_port", 24454)),
-            )
+        pass
 
     def _load_icon_async(self, image: Gtk.Image, url: str, size: int = 44) -> None:
         def worker():

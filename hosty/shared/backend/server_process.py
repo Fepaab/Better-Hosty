@@ -19,13 +19,22 @@ class ServerProcess(EventEmitter):
     Emits signals for output and status changes.
     """
 
-    def __init__(self, server_dir: str, java_path: str, ram_mb: int = 2048, max_players: int = 20, jvm_args: str = ""):
+    def __init__(
+        self,
+        server_dir: str,
+        java_path: str,
+        ram_mb: int = 2048,
+        max_players: int = 20,
+        jvm_args: str = "",
+        loader_type: str = "fabric",
+    ):
         super().__init__()
         self.server_dir = Path(server_dir)
         self.java_path = java_path
         self.ram_mb = ram_mb
         self.max_players = max(1, int(max_players))
         self.jvm_args = jvm_args
+        self.loader_type = loader_type.lower()
         self.player_count = 0
         self._process: subprocess.Popen | None = None
         self._status = ServerStatus.STOPPED
@@ -56,14 +65,39 @@ class ServerProcess(EventEmitter):
     def is_running(self) -> bool:
         return self._status in (ServerStatus.RUNNING, ServerStatus.STARTING)
 
+    def _find_executable_jar(self) -> str | None:
+        """Find the executable JAR file for the current server loader."""
+        if self.loader_type == "fabric":
+            jar = self.server_dir / "fabric-server-launch.jar"
+            if jar.exists():
+                return jar.name
+        elif self.loader_type == "quilt":
+            for name in ("quilt-server-launch.jar", "quilt-server-Launch.jar", "server.jar"):
+                if (self.server_dir / name).exists():
+                    return name
+        elif self.loader_type in ("paper", "purpur"):
+            name = f"{self.loader_type}.jar"
+            if (self.server_dir / name).exists():
+                return name
+        elif self.loader_type == "vanilla":
+            if (self.server_dir / "server.jar").exists():
+                return "server.jar"
+
+        # Fallback search for any launcher or server jar
+        for candidate in ("fabric-server-launch.jar", "quilt-server-launch.jar", "paper.jar", "purpur.jar", "server.jar"):
+            if (self.server_dir / candidate).exists():
+                return candidate
+
+        return None
+
     def start(self) -> bool:
         """Start the Minecraft server."""
         if self.is_running:
             return False
 
-        launch_jar = self.server_dir / "fabric-server-launch.jar"
-        if not launch_jar.exists():
-            self._emit_output("[Hosty] Error: fabric-server-launch.jar not found\n")
+        jar_name = self._find_executable_jar()
+        if not jar_name:
+            self._emit_output(f"[Hosty] Error: Executable JAR file for {self.loader_type} not found\n")
             return False
 
         if not self.java_path:
@@ -77,7 +111,7 @@ class ServerProcess(EventEmitter):
         ]
         if self.jvm_args:
             cmd.extend(self.jvm_args.split())
-        cmd.extend(["-jar", "fabric-server-launch.jar", "nogui"])
+        cmd.extend(["-jar", jar_name, "nogui"])
 
         self.status = ServerStatus.STARTING
         self.player_count = 0

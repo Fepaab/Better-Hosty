@@ -410,21 +410,6 @@ class ServerDetailView(Gtk.Box):
                     self._show_port_conflict_dialog("Java", conflict_port)
                     return
 
-                br_conflict = self._server_manager.check_bedrock_port_conflict(self._current_server.id)
-                if br_conflict is not None:
-                    self._show_port_conflict_dialog("Bedrock", br_conflict)
-                    return
-
-                vc_conflict = self._server_manager.check_voicechat_port_conflict(self._current_server.id)
-                if vc_conflict is not None:
-                    self._show_port_conflict_dialog("Voice Chat", vc_conflict)
-                    return
-
-                self._server_manager.playit_manager.configure_voicechat_mod(
-                    str(self._current_server.server_dir),
-                    self._current_server.id,
-                    voicechat_port=self._server_manager.get_voicechat_port(self._current_server.id),
-                )
             self._selected_process.start()
 
     def get_console_view(self, server_id: str | None = None) -> ConsoleView | None:

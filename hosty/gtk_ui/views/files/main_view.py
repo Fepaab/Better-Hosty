@@ -111,6 +111,7 @@ class FilesView(Gtk.Box, BackupsMixin, ModsMixin, PlayersMixin, ModrinthMixin, W
         open_mods_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
         open_mods_row.set_activatable(True)
         open_mods_row.connect("activated", self._on_open_mods_folder)
+        self._open_mods_row = open_mods_row
         self._mods_group.add(open_mods_row)
 
         modrinth_row = Adw.ActionRow(
@@ -160,8 +161,42 @@ class FilesView(Gtk.Box, BackupsMixin, ModsMixin, PlayersMixin, ModrinthMixin, W
         self._server_manager = server_manager
         self._worlds_snapshot = tuple()
         self._disabled_snapshot = tuple()
+        self._update_mods_group_headers()
         self._refresh_backups_row_subtitle()
         self._rebuild_lists()
+
+    def _update_mods_group_headers(self):
+        if not self._server_info:
+            return
+        loader = str(getattr(self._server_info, "loader_type", "fabric")).lower()
+        if loader in ("paper", "purpur", "spigot"):
+            self._mods_group.set_title(_("Plugins"))
+            if hasattr(self, "_open_mods_row") and self._open_mods_row:
+                self._open_mods_row.set_visible(True)
+                self._open_mods_row.set_title(_("Open plugins folder"))
+            if self._mods_expander:
+                self._mods_expander.set_visible(True)
+                self._mods_expander.set_title(_("Installed Plugins"))
+            if self._check_updates_row:
+                self._check_updates_row.set_visible(True)
+        elif loader == "vanilla":
+            self._mods_group.set_title(_("DataPacks"))
+            if hasattr(self, "_open_mods_row") and self._open_mods_row:
+                self._open_mods_row.set_visible(False)
+            if self._mods_expander:
+                self._mods_expander.set_visible(False)
+            if self._check_updates_row:
+                self._check_updates_row.set_visible(False)
+        else:
+            self._mods_group.set_title(_("Mods"))
+            if hasattr(self, "_open_mods_row") and self._open_mods_row:
+                self._open_mods_row.set_visible(True)
+                self._open_mods_row.set_title(_("Open mods folder"))
+            if self._mods_expander:
+                self._mods_expander.set_visible(True)
+                self._mods_expander.set_title(_("Installed Mods"))
+            if self._check_updates_row:
+                self._check_updates_row.set_visible(True)
 
     def refresh_worlds_if_changed(self, force: bool = False) -> None:
         """Refresh the Files lists when world or dimension folders changed on disk."""
@@ -498,11 +533,14 @@ class FilesView(Gtk.Box, BackupsMixin, ModsMixin, PlayersMixin, ModrinthMixin, W
             self._open_target(root)
 
     def _on_open_mods_folder(self, *_):
-        root = self._server_dir()
-        if root:
-            d = root / "mods"
-            d.mkdir(parents=True, exist_ok=True)
-            self._open_target(d)
+        target = self._get_content_dir()
+        if target:
+            target.mkdir(parents=True, exist_ok=True)
+            self._open_target(target)
+        else:
+            root = self._server_dir()
+            if root:
+                self._open_target(root)
 
     def _open_target(self, path: Path):
         if not _open_path(path):

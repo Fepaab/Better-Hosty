@@ -225,7 +225,12 @@ def search_mods(
     elif ptype == "plugin":
         facets_raw: list[list[str]] = [["project_type:plugin"]]
     else:
-        facets_raw: list[list[str]] = [[f"project_type:{ptype}"], [f"categories:{ldr}"]]
+        if ldr == "quilt":
+            facets_raw = [[f"project_type:{ptype}"], ["categories:quilt", "categories:fabric"]]
+        elif ldr in ("paper", "purpur"):
+            facets_raw = [["project_type:plugin"], ["categories:paper", "categories:spigot", "categories:purpur"]]
+        else:
+            facets_raw = [[f"project_type:{ptype}"], [f"categories:{ldr}"]]
 
     if ptype == "modpack":
         facets_raw.append(["server_side:required", "server_side:optional", "server_side:unknown"])

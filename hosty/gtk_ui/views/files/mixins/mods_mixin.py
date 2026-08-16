@@ -941,13 +941,14 @@ class ModsMixin:
             # Check standalone updates
             standalone_updates = []
             blocked = 0
+            server_loader = str(getattr(self._server_info, "loader_type", "fabric")).lower() if self._server_info else "fabric"
             for project_id, meta in individual_state.items():
                 current_version = str((meta or {}).get("version_id", "")).strip()
-                # Find compatible mod version with fabric loader
+                # Find compatible mod version with server loader
                 latest = modrinth_client.find_compatible_version(
                     project_id,
                     mc_version,
-                    loader="fabric",
+                    loader=server_loader,
                 )
                 if not latest:
                     continue
@@ -981,7 +982,7 @@ class ModsMixin:
                 deps = modrinth_client.resolve_required_dependencies(
                     latest.version_id,
                     mc_version,
-                    loader="fabric",
+                    loader=server_loader,
                 )
                 dep_hits_modpack = any(str(dep.filename).strip().lower() in managed_mods for dep in deps)
                 if dep_hits_modpack:

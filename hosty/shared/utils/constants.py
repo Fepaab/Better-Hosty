@@ -58,8 +58,8 @@ LOADER_TYPES = [
     {"id": LOADER_PAPER, "name": "Paper", "type": "plugin", "icon": "paper", "desc": "High performance Minecraft server (Plugins)"},
     {"id": LOADER_PURPUR, "name": "Purpur", "type": "plugin", "icon": "purpur", "desc": "Drop-in replacement for Paper with extra customization"},
     {"id": LOADER_VANILLA, "name": "Vanilla", "type": "vanilla", "icon": "minecraft", "desc": "Official unmodified Minecraft server"},
-    {"id": LOADER_FORGE, "name": "Forge (Em breve)", "type": "mod", "icon": "forge", "desc": "Classic Minecraft modding platform"},
-    {"id": LOADER_NEOFORGE, "name": "NeoForge (Em breve)", "type": "mod", "icon": "neoforge", "desc": "Modern community fork of Forge"},
+    {"id": LOADER_FORGE, "name": "Forge", "type": "mod", "icon": "forge", "desc": "Classic Minecraft modding platform"},
+    {"id": LOADER_NEOFORGE, "name": "NeoForge", "type": "mod", "icon": "neoforge", "desc": "Modern community fork of Forge"},
 ]
 
 # Fabric Meta API
@@ -73,6 +73,12 @@ QUILT_META_BASE = "https://meta.quiltmc.org/v3/versions"
 QUILT_GAME_VERSIONS_URL = f"{QUILT_META_BASE}/game"
 QUILT_LOADER_VERSIONS_URL = f"{QUILT_META_BASE}/loader"
 QUILT_INSTALLER_VERSIONS_URL = f"{QUILT_META_BASE}/installer"
+
+# Forge & NeoForge APIs
+FORGE_PROMOTIONS_URL = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"
+FORGE_MAVEN_BASE = "https://maven.minecraftforge.net/net/minecraftforge/forge"
+NEOFORGE_MAVEN_METADATA_URL = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml"
+NEOFORGE_MAVEN_BASE = "https://maven.neoforged.net/releases/net/neoforged/neoforge"
 
 # User-Agent para requisições HTTP
 HTTP_USER_AGENT = "Hosty/1.0 (https://github.com/sugarycandybar/Hosty)"

@@ -90,14 +90,27 @@ class ServerProcess(EventEmitter):
 
         return None
 
+    def _find_args_file(self) -> Path | None:
+        """Find unix_args.txt file for Forge/NeoForge servers."""
+        for pattern in (
+            "libraries/net/minecraftforge/forge/*/unix_args.txt",
+            "libraries/net/neoforged/neoforge/*/unix_args.txt",
+        ):
+            matches = list(self.server_dir.glob(pattern))
+            if matches:
+                return matches[0]
+        return None
+
     def start(self) -> bool:
         """Start the Minecraft server."""
         if self.is_running:
             return False
 
-        jar_name = self._find_executable_jar()
-        if not jar_name:
-            self._emit_output(f"[Hosty] Error: Executable JAR file for {self.loader_type} not found\n")
+        args_file = self._find_args_file()
+        jar_name = self._find_executable_jar() if not args_file else None
+
+        if not args_file and not jar_name:
+            self._emit_output(f"[Hosty] Error: Executable JAR file or args file for {self.loader_type} not found\n")
             return False
 
         if not self.java_path:
@@ -111,7 +124,18 @@ class ServerProcess(EventEmitter):
         ]
         if self.jvm_args:
             cmd.extend(self.jvm_args.split())
-        cmd.extend(["-jar", jar_name, "nogui"])
+
+        if args_file:
+            user_args = self.server_dir / "user_jvm_args.txt"
+            if not user_args.exists():
+                try:
+                    user_args.write_text("# Hosty JVM Args\n", encoding="utf-8")
+                except Exception:
+                    pass
+            rel_args = args_file.relative_to(self.server_dir)
+            cmd.extend(["@user_jvm_args.txt", f"@{rel_args}", "nogui"])
+        else:
+            cmd.extend(["-jar", jar_name, "nogui"])
 
         self.status = ServerStatus.STARTING
         self.player_count = 0

@@ -59,9 +59,15 @@ class ModrinthMixin:
         search_outer.set_hexpand(True)
         search_outer.set_valign(Gtk.Align.CENTER)
 
+        server_loader = str(getattr(self._server_info, "loader_type", "fabric")).lower() if self._server_info else "fabric"
         entry = Gtk.SearchEntry()
         entry.set_hexpand(True)
-        entry.set_placeholder_text("Search Fabric mods…")
+        if server_loader in ("paper", "purpur", "spigot"):
+            entry.set_placeholder_text(_("Search {} plugins…").format(server_loader.title()))
+        elif server_loader == "vanilla":
+            entry.set_placeholder_text(_("Search DataPacks…"))
+        else:
+            entry.set_placeholder_text(_("Search {} mods…").format(server_loader.title()))
         entry.add_css_class("modrinth-search-entry")
         search_outer.append(entry)
 
@@ -84,11 +90,21 @@ class ModrinthMixin:
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         outer.set_hexpand(True)
 
-        project_type_items = [
-            (_("Mods"), "mod"),
-            (_("Modpacks"), "modpack"),
-            (_("Datapacks"), "datapack"),
-        ]
+        if server_loader in ("paper", "purpur", "spigot"):
+            project_type_items = [
+                (_("Plugins"), "plugin"),
+                (_("Datapacks"), "datapack"),
+            ]
+        elif server_loader == "vanilla":
+            project_type_items = [
+                (_("Datapacks"), "datapack"),
+            ]
+        else:
+            project_type_items = [
+                (_("Mods"), "mod"),
+                (_("Modpacks"), "modpack"),
+                (_("Datapacks"), "datapack"),
+            ]
         category_items = [
             (_("Any category"), ""),
             (_("Optimization"), "optimization"),
@@ -220,11 +236,13 @@ class ModrinthMixin:
         def update_search_hint() -> None:
             ptype = selected_project_type()
             if ptype == "modpack":
-                entry.set_placeholder_text(_("Search Fabric modpacks…"))
+                entry.set_placeholder_text(_("Search {} modpacks…").format(server_loader.title()))
             elif ptype == "datapack":
-                entry.set_placeholder_text(_("Search datapacks…"))
+                entry.set_placeholder_text(_("Search DataPacks…"))
+            elif ptype == "plugin":
+                entry.set_placeholder_text(_("Search {} plugins…").format(server_loader.title()))
             else:
-                entry.set_placeholder_text(_("Search Fabric mods…"))
+                entry.set_placeholder_text(_("Search {} mods…").format(server_loader.title()))
 
         def clear_results():
             while True:
@@ -278,6 +296,8 @@ class ModrinthMixin:
             sort_key = selected_sort()
             project_type = selected_project_type()
 
+            loader_type = str(getattr(self._server_info, "loader_type", "fabric")).lower() if self._server_info else "fabric"
+
             def thread_fn():
                 try:
                     hits, total = modrinth_client.search_mods(
@@ -287,7 +307,7 @@ class ModrinthMixin:
                         sort=sort_key,
                         game_version=(mc_version if mc_version else None),
                         category=category,
-                        loader="fabric",
+                        loader=loader_type,
                         server_side_only=(project_type != "datapack"),
                         project_type=project_type,
                     )
@@ -625,7 +645,8 @@ class ModrinthMixin:
                 _set_row_btn(sensitive=False)
                 return
             try:
-                loader_for_query = "datapack" if is_datapack else "fabric"
+                server_loader = str(getattr(self._server_info, "loader_type", "fabric")).lower() if self._server_info else "fabric"
+                loader_for_query = "datapack" if is_datapack else server_loader
                 versions = modrinth_client.find_compatible_versions(
                     hit.project_id,
                     mc_version,
@@ -894,11 +915,10 @@ class ModrinthMixin:
 
         def thread_fn(deps_to_install: list, all_required_deps: list):
             try:
-                root = self._server_dir()
-                if not root:
-                    raise RuntimeError("No server selected.")
+                mods_dir = self._get_content_dir()
+                if not mods_dir:
+                    raise RuntimeError("No server content directory available.")
 
-                mods_dir = root / "mods"
                 mods_dir.mkdir(parents=True, exist_ok=True)
                 installed_names_local = {p.name.lower() for p in mods_dir.glob("*.jar")}
 
@@ -966,17 +986,17 @@ class ModrinthMixin:
 
         def resolve_and_prompt():
             try:
-                root = self._server_dir()
-                if not root:
-                    raise RuntimeError("No server selected.")
+                mods_dir = self._get_content_dir()
+                if not mods_dir:
+                    raise RuntimeError("No server content directory available.")
 
-                mods_dir = root / "mods"
                 mods_dir.mkdir(parents=True, exist_ok=True)
                 installed_names_local = {p.name.lower() for p in mods_dir.glob("*.jar")}
+                server_loader = str(getattr(self._server_info, "loader_type", "fabric")).lower() if self._server_info else "fabric"
                 deps = modrinth_client.resolve_required_dependencies(
                     chosen.version_id,
                     mc_version,
-                    loader="fabric",
+                    loader=server_loader,
                 )
                 deps_to_install = []
                 for dep in deps:

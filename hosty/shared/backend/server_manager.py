@@ -348,8 +348,57 @@ class ServerManager(EventEmitter):
             if not ok:
                 return False, msg
 
-        elif loader_type in (LOADER_FORGE, LOADER_NEOFORGE):
-            return False, _("Forge and NeoForge installer is coming in the next update. Please select Paper, Purpur, Fabric, Quilt, or Vanilla.")
+        elif loader_type == LOADER_FORGE:
+            progress(0.30, _("Downloading Forge installer"))
+            forge_ver = loader_version or ""
+            if not forge_ver or forge_ver in ("latest", "recommended"):
+                promos = self.download_manager._fetch_forge_promos()
+                forge_ver = promos.get(f"{mc_version}-recommended") or promos.get(f"{mc_version}-latest") or ""
+            if not forge_ver:
+                return False, _("Could not determine Forge version for MC {}").format(mc_version)
+
+            installer_path = self.download_manager.download_forge_installer(
+                mc_version, forge_ver, progress_callback=lambda f, text: progress(0.30 + f * 0.30, text)
+            )
+            if not installer_path:
+                return False, _("Failed to download Forge installer")
+
+            java_path = self.java_manager.get_java_path(java_req) or self.java_manager.get_java_for_mc(mc_version) or "java"
+            progress(0.60, _("Installing Forge server"))
+            ok, msg = self.download_manager.install_forge_server(
+                java_path=java_path,
+                installer_jar=installer_path,
+                server_dir=str(root),
+                progress_callback=lambda f, text: progress(0.60 + f * 0.30, text),
+            )
+            if not ok:
+                return False, msg
+
+        elif loader_type == LOADER_NEOFORGE:
+            progress(0.30, _("Downloading NeoForge installer"))
+            neo_ver = loader_version or ""
+            if not neo_ver or neo_ver == "latest":
+                neo_vers = self.download_manager.fetch_loader_versions_for_loader(LOADER_NEOFORGE, mc_version)
+                neo_ver = neo_vers[0] if (neo_vers and neo_vers[0] != "latest") else ""
+            if not neo_ver:
+                return False, _("Could not determine NeoForge version for MC {}").format(mc_version)
+
+            installer_path = self.download_manager.download_neoforge_installer(
+                neo_ver, progress_callback=lambda f, text: progress(0.30 + f * 0.30, text)
+            )
+            if not installer_path:
+                return False, _("Failed to download NeoForge installer")
+
+            java_path = self.java_manager.get_java_path(java_req) or self.java_manager.get_java_for_mc(mc_version) or "java"
+            progress(0.60, _("Installing NeoForge server"))
+            ok, msg = self.download_manager.install_neoforge_server(
+                java_path=java_path,
+                installer_jar=installer_path,
+                server_dir=str(root),
+                progress_callback=lambda f, text: progress(0.60 + f * 0.30, text),
+            )
+            if not ok:
+                return False, msg
 
         elif loader_type == LOADER_VANILLA:
             progress(0.30, _("Downloading Vanilla server"))

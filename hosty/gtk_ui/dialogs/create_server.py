@@ -385,20 +385,19 @@ class CreateServerDialog(Adw.Dialog):
             java_ver = get_required_java_version(mc_ver)
             self._select_java_version(java_ver)
 
-            # Update loader build list for Paper
+            # Update loader build list for selected loader
             loader_type = self._get_selected_loader_type()
-            if loader_type in ("paper", "quilt"):
-                def worker():
-                    dl_mgr = self._server_manager.download_manager
-                    loaders = dl_mgr.fetch_loader_versions_for_loader(loader_type, mc_ver)
-                    def ui():
-                        self._loader_versions = loaders
-                        if loaders:
-                            self._fabric_version_row.set_subtitle(loaders[0])
-                    GLib.idle_add(ui)
-                threading.Thread(target=worker, daemon=True).start()
-
-        self._validate()
+            def worker():
+                dl_mgr = self._server_manager.download_manager
+                loaders = dl_mgr.fetch_loader_versions_for_loader(loader_type, mc_ver)
+                def ui():
+                    self._loader_versions = loaders
+                    if loaders:
+                        self._fabric_version_row.set_subtitle(loaders[0])
+                    else:
+                        self._fabric_version_row.set_subtitle(_("Latest"))
+                GLib.idle_add(ui)
+            threading.Thread(target=worker, daemon=True).start()
 
         self._validate()
 

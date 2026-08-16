@@ -15,6 +15,8 @@ from hosty.shared.utils.constants import (
     FABRIC_GAME_VERSIONS_URL,
     FABRIC_INSTALLER_VERSIONS_URL,
     FABRIC_LOADER_VERSIONS_URL,
+    FORGE_MAVEN_BASE,
+    FORGE_PROMOTIONS_URL,
     HTTP_USER_AGENT,
     LOADER_FABRIC,
     LOADER_FORGE,
@@ -24,6 +26,8 @@ from hosty.shared.utils.constants import (
     LOADER_QUILT,
     LOADER_VANILLA,
     MOJANG_VERSION_MANIFEST_URL,
+    NEOFORGE_MAVEN_BASE,
+    NEOFORGE_MAVEN_METADATA_URL,
     PAPER_API_BASE,
     PURPUR_API_BASE,
     QUILT_GAME_VERSIONS_URL,
@@ -31,6 +35,39 @@ from hosty.shared.utils.constants import (
     QUILT_LOADER_VERSIONS_URL,
 )
 from hosty.shared.utils.subprocess_utils import hidden_subprocess_kwargs
+
+
+def parse_version_tuple(v: str) -> tuple[int, ...]:
+    """Parse version string into a tuple of integers for accurate numerical sorting."""
+    try:
+        clean = v.split("-")[0]
+        return tuple(int(x) for x in clean.split(".") if x.isdigit())
+    except Exception:
+        return (0,)
+
+
+def filter_neoforge_versions(neo_vers: list[str], mc_version: str) -> list[str]:
+    """Filter NeoForge versions to strictly match the given Minecraft version."""
+    if not mc_version:
+        return []
+    parts = mc_version.split(".")
+    if len(parts) < 2:
+        return []
+    try:
+        target_major = int(parts[1])
+        target_minor = int(parts[2]) if len(parts) > 2 else 0
+    except ValueError:
+        return []
+
+    matching = []
+    for v in neo_vers:
+        v_parts = v.split(".")
+        if len(v_parts) >= 2 and v_parts[0].isdigit() and v_parts[1].isdigit():
+            v_maj = int(v_parts[0])
+            v_min = int(v_parts[1])
+            if v_maj == target_major and v_min == target_minor:
+                matching.append(v)
+    return sorted(matching, key=parse_version_tuple, reverse=True)
 
 
 class DownloadManager:
@@ -126,8 +163,32 @@ class DownloadManager:
                 if include_snapshots or entry.get("type") == "release":
                     versions.append(entry.get("id"))
             return versions
+        elif loader_type == LOADER_FORGE:
+            promos = self._fetch_forge_promos()
+            mc_vers = set()
+            for key in promos.keys():
+                if "-" in key:
+                    mc_vers.add(key.split("-")[0])
+            sorted_vers = sorted(list(mc_vers), key=parse_version_tuple, reverse=True)
+            return sorted_vers or ["1.20.1", "1.19.2", "1.18.2", "1.16.5"]
+        elif loader_type == LOADER_NEOFORGE:
+            neo_vers = self._fetch_neoforge_versions()
+            mc_vers = set()
+            for nv in neo_vers:
+                parts = nv.split(".")
+                if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                    major = int(parts[0])
+                    minor = int(parts[1])
+                    if major == 20:
+                        mc_vers.add(f"1.20.{minor}" if minor > 0 else "1.20")
+                    elif major == 21:
+                        sub = f".{minor}" if minor > 0 else ""
+                        mc_vers.add(f"1.21{sub}")
+            sorted_vers = sorted(list(mc_vers), key=parse_version_tuple, reverse=True)
+            return sorted_vers or ["1.21.4", "1.21.1", "1.20.4", "1.20.2"]
 
-        return self.fetch_game_versions(include_snapshots)
+        raw = self.fetch_game_versions(include_snapshots)
+        return sorted(raw, key=parse_version_tuple, reverse=True)
 
     def fetch_loader_versions_for_loader(
         self, loader_type: str = LOADER_FABRIC, mc_version: str = ""
@@ -161,6 +222,24 @@ class DownloadManager:
             return ["latest"]
         elif loader_type == LOADER_VANILLA:
             return []
+        elif loader_type == LOADER_FORGE:
+            if not mc_version:
+                return []
+            promos = self._fetch_forge_promos()
+            rec = promos.get(f"{mc_version}-recommended")
+            latest = promos.get(f"{mc_version}-latest")
+            builds = []
+            if latest:
+                builds.append(latest)
+            if rec and rec != latest:
+                builds.append(rec)
+            return builds or ["recommended", "latest"]
+        elif loader_type == LOADER_NEOFORGE:
+            if not mc_version:
+                return []
+            neo_vers = self._fetch_neoforge_versions()
+            matching = filter_neoforge_versions(neo_vers, mc_version)
+            return matching if matching else ["latest"]
 
         return self.fetch_loader_versions()
 
@@ -562,6 +641,128 @@ class DownloadManager:
         except Exception as e:
             dest.unlink(missing_ok=True)
             return False, _("Failed to download Paper: {}").format(e)
+
+    def _fetch_forge_promos(self) -> dict[str, str]:
+        """Fetch Forge promotions slim dictionary."""
+        try:
+            resp = requests.get(FORGE_PROMOTIONS_URL, timeout=15)
+            resp.raise_for_status()
+            return resp.json().get("promos", {})
+        except Exception as e:
+            print(f"Failed to fetch Forge promos: {e}")
+            return {}
+
+    def _fetch_neoforge_versions(self) -> list[str]:
+        """Fetch NeoForge versions list from maven metadata."""
+        import xml.etree.ElementTree as ET
+
+        try:
+            resp = requests.get(NEOFORGE_MAVEN_METADATA_URL, timeout=15)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            return [v.text for v in root.findall(".//version") if v.text]
+        except Exception as e:
+            print(f"Failed to fetch NeoForge versions: {e}")
+            return []
+
+    def download_forge_installer(
+        self, mc_version: str, forge_version: str, progress_callback: Callable[[float, str], None] | None = None
+    ) -> str | None:
+        """Download Forge installer JAR."""
+        version_str = f"{mc_version}-{forge_version}"
+        url = f"{FORGE_MAVEN_BASE}/{version_str}/forge-{version_str}-installer.jar"
+        cached_jar = CACHE_DIR / f"forge-installer-{version_str}.jar"
+        if cached_jar.exists():
+            if progress_callback:
+                progress_callback(1.0, _("Using cached Forge installer"))
+            return str(cached_jar)
+
+        try:
+            if progress_callback:
+                progress_callback(0.2, _("Downloading Forge installer..."))
+            resp = requests.get(url, stream=True, timeout=120)
+            resp.raise_for_status()
+            with open(cached_jar, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return str(cached_jar)
+        except Exception as e:
+            print(f"Failed to download Forge installer: {e}")
+            cached_jar.unlink(missing_ok=True)
+            return None
+
+    def install_forge_server(
+        self,
+        java_path: str,
+        installer_jar: str,
+        server_dir: str,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str]:
+        """Run Forge installer to set up a server."""
+        import subprocess
+
+        Path(server_dir).mkdir(parents=True, exist_ok=True)
+        cmd = [java_path, "-jar", installer_jar, "--installServer", server_dir]
+        if progress_callback:
+            progress_callback(0.5, _("Installing Forge server..."))
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=400, cwd=server_dir, **hidden_subprocess_kwargs()
+            )
+            if result.returncode == 0:
+                return True, _("Forge installed successfully")
+            return False, _("Forge installer failed: {}").format(result.stderr or result.stdout)
+        except Exception as e:
+            return False, _("Forge install error: {}").format(e)
+
+    def download_neoforge_installer(
+        self, neoforge_version: str, progress_callback: Callable[[float, str], None] | None = None
+    ) -> str | None:
+        """Download NeoForge installer JAR."""
+        url = f"{NEOFORGE_MAVEN_BASE}/{neoforge_version}/neoforge-{neoforge_version}-installer.jar"
+        cached_jar = CACHE_DIR / f"neoforge-installer-{neoforge_version}.jar"
+        if cached_jar.exists():
+            if progress_callback:
+                progress_callback(1.0, _("Using cached NeoForge installer"))
+            return str(cached_jar)
+
+        try:
+            if progress_callback:
+                progress_callback(0.2, _("Downloading NeoForge installer..."))
+            resp = requests.get(url, stream=True, timeout=120)
+            resp.raise_for_status()
+            with open(cached_jar, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return str(cached_jar)
+        except Exception as e:
+            print(f"Failed to download NeoForge installer: {e}")
+            cached_jar.unlink(missing_ok=True)
+            return None
+
+    def install_neoforge_server(
+        self,
+        java_path: str,
+        installer_jar: str,
+        server_dir: str,
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str]:
+        """Run NeoForge installer to set up a server."""
+        import subprocess
+
+        Path(server_dir).mkdir(parents=True, exist_ok=True)
+        cmd = [java_path, "-jar", installer_jar, "--installServer", server_dir]
+        if progress_callback:
+            progress_callback(0.5, _("Installing NeoForge server..."))
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=400, cwd=server_dir, **hidden_subprocess_kwargs()
+            )
+            if result.returncode == 0:
+                return True, _("NeoForge installed successfully")
+            return False, _("NeoForge installer failed: {}").format(result.stderr or result.stdout)
+        except Exception as e:
+            return False, _("NeoForge install error: {}").format(e)
 
     def install_purpur_server(
         self,

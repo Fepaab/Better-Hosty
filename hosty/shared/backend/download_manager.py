@@ -225,6 +225,11 @@ class DownloadManager:
         elif loader_type == LOADER_FORGE:
             if not mc_version:
                 return []
+            all_forge = self._fetch_all_forge_versions()
+            prefix = f"{mc_version}-"
+            matching = [v[len(prefix):] for v in all_forge if v.startswith(prefix)]
+            if matching:
+                return sorted(matching, key=parse_version_tuple, reverse=True)
             promos = self._fetch_forge_promos()
             rec = promos.get(f"{mc_version}-recommended")
             latest = promos.get(f"{mc_version}-latest")
@@ -651,6 +656,19 @@ class DownloadManager:
         except Exception as e:
             print(f"Failed to fetch Forge promos: {e}")
             return {}
+
+    def _fetch_all_forge_versions(self) -> list[str]:
+        """Fetch all Forge versions list from Maven metadata."""
+        import xml.etree.ElementTree as ET
+
+        try:
+            resp = requests.get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml", timeout=15)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+            return [v.text for v in root.findall(".//version") if v.text]
+        except Exception as e:
+            print(f"Failed to fetch Forge versions from Maven: {e}")
+            return []
 
     def _fetch_neoforge_versions(self) -> list[str]:
         """Fetch NeoForge versions list from maven metadata."""

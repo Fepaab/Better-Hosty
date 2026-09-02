@@ -242,11 +242,11 @@ class CreateServerDialog(Adw.Dialog):
         self._mc_version_row.connect("notify::selected", self._on_mc_version_changed)
         version_group.add(self._mc_version_row)
 
-        self._fabric_version_row = Adw.ActionRow(
+        self._loader_version_list = Gtk.StringList.new([_("Latest")])
+        self._fabric_version_row = Adw.ComboRow(
             title=_("Software Build / Loader"),
-            subtitle=_("Latest"),
+            model=self._loader_version_list,
         )
-        self._fabric_version_row.set_activatable(False)
         version_group.add(self._fabric_version_row)
 
         java_labels = [f"Java {v}" for v in COMMON_JAVA_VERSIONS]
@@ -360,6 +360,18 @@ class CreateServerDialog(Adw.Dialog):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _update_loader_version_ui(self, loaders: list[str]) -> None:
+        """Update the loader build ComboRow model with available loader versions."""
+        self._loader_versions = loaders
+        if loaders:
+            new_list = Gtk.StringList.new(loaders)
+            self._fabric_version_row.set_model(new_list)
+            self._fabric_version_row.set_sensitive(True)
+            self._fabric_version_row.set_selected(0)
+        else:
+            self._fabric_version_row.set_model(Gtk.StringList.new([_("Latest")]))
+            self._fabric_version_row.set_sensitive(False)
+
     def _populate_versions(self):
         """Populate version dropdowns (called on main thread)."""
         if self._game_versions:
@@ -369,12 +381,7 @@ class CreateServerDialog(Adw.Dialog):
             self._mc_version_row.set_selected(0)
             self._on_mc_version_changed(self._mc_version_row, None)
 
-        loader_type = self._get_selected_loader_type()
-        if self._loader_versions:
-            self._fabric_version_row.set_subtitle(self._loader_versions[0])
-        else:
-            self._fabric_version_row.set_subtitle(_("Latest"))
-
+        self._update_loader_version_ui(self._loader_versions)
         self._validate()
 
     def _on_mc_version_changed(self, row, _pspec):
@@ -391,11 +398,7 @@ class CreateServerDialog(Adw.Dialog):
                 dl_mgr = self._server_manager.download_manager
                 loaders = dl_mgr.fetch_loader_versions_for_loader(loader_type, mc_ver)
                 def ui():
-                    self._loader_versions = loaders
-                    if loaders:
-                        self._fabric_version_row.set_subtitle(loaders[0])
-                    else:
-                        self._fabric_version_row.set_subtitle(_("Latest"))
+                    self._update_loader_version_ui(loaders)
                 GLib.idle_add(ui)
             threading.Thread(target=worker, daemon=True).start()
 
@@ -551,6 +554,13 @@ class CreateServerDialog(Adw.Dialog):
         self._create_btn.set_label(_("Create"))
         self._create_btn.set_sensitive(False)
 
+    def _get_selected_loader_version(self) -> str:
+        if self._loader_versions:
+            idx = self._fabric_version_row.get_selected()
+            if idx < len(self._loader_versions):
+                return self._loader_versions[idx]
+        return ""
+
     def _on_primary_clicked(self, button):
         """Move to next step or start creation on the final step."""
         page = self._stack.get_visible_child_name()
@@ -569,7 +579,7 @@ class CreateServerDialog(Adw.Dialog):
         loader_type = self._get_selected_loader_type()
         mc_idx = self._mc_version_row.get_selected()
         mc_version = self._game_versions[mc_idx] if mc_idx < len(self._game_versions) else ""
-        loader_version = self._loader_versions[0] if self._loader_versions else ""
+        loader_version = self._get_selected_loader_version()
         ram_mb = int(self._ram_row.get_value())
         seed = self._seed_entry.get_text().strip()
         difficulty_idx = self._difficulty_row.get_selected()

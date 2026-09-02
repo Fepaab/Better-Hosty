@@ -388,11 +388,10 @@ class PropertiesView(Gtk.Box):
         mc_row = Adw.ComboRow(title=_("Minecraft version"), model=Gtk.StringList.new([_("Loading...")]))
         runtime_group.add(mc_row)
 
-        fabric_version_row = Adw.ActionRow(
-            title=_("Fabric loader"),
-            subtitle=_("Loading..."),
+        fabric_version_row = Adw.ComboRow(
+            title=_("Software Build / Loader"),
+            model=Gtk.StringList.new([_("Loading...")]),
         )
-        fabric_version_row.set_activatable(False)
         runtime_group.add(fabric_version_row)
 
         java_info_row = Adw.ActionRow(
@@ -461,9 +460,15 @@ class PropertiesView(Gtk.Box):
 
         def validate(*_args):
             update_java_info(selected_mc_version())
-            primary_btn.set_sensitive(bool(mc_values) and bool(loader_values))
+            primary_btn.set_sensitive(bool(mc_values))
 
-        mc_row.connect("notify::selected", validate)
+        def on_mc_version_changed(_row, _pspec):
+            mc_ver = selected_mc_version()
+            update_java_info(mc_ver)
+            update_loaders_for_mc(mc_ver)
+            validate()
+
+        mc_row.connect("notify::selected", on_mc_version_changed)
 
         def on_cancel(*_args):
             visible = stack.get_visible_child_name()
@@ -501,41 +506,57 @@ class PropertiesView(Gtk.Box):
                 expander.add_row(Adw.ActionRow(title=label, subtitle=subtitle))
             add_review_row(expander)
 
+        def update_loaders_for_mc(mc_ver: str) -> None:
+            if not mc_ver or mc_ver == _("No versions found"):
+                return
+            loader_type = getattr(self._server_info, "loader_type", "fabric") if self._server_info else "fabric"
+            def worker():
+                loaders = self._server_manager.download_manager.fetch_loader_versions_for_loader(loader_type, mc_ver)
+                def loaded():
+                    loader_values.clear()
+                    loader_values.extend(loaders)
+                    if loaders:
+                        fabric_version_row.set_model(Gtk.StringList.new(loaders))
+                        fabric_version_row.set_sensitive(True)
+                        fabric_version_row.set_selected(0)
+                        selected_loader["value"] = loaders[0]
+                    else:
+                        fabric_version_row.set_model(Gtk.StringList.new([_("Latest")]))
+                        fabric_version_row.set_sensitive(False)
+                        selected_loader["value"] = ""
+                    validate()
+                GLib.idle_add(loaded)
+            threading.Thread(target=worker, daemon=True).start()
+
         def versions_worker():
-            games = self._server_manager.download_manager.fetch_game_versions()
-            loaders = self._server_manager.download_manager.fetch_loader_versions()
+            loader_type = getattr(self._server_info, "loader_type", "fabric") if self._server_info else "fabric"
+            games = self._server_manager.download_manager.fetch_game_versions_for_loader(loader_type)
 
             def loaded():
-                current_mc = self._server_info.mc_version
-                current_loader = self._server_info.loader_version
-                next_games = [v for v in games if ServerManager.is_version_after(v, current_mc)]
-                next_loaders = [
-                    v for v in loaders if not current_loader or ServerManager.is_version_at_least(v, current_loader)
-                ]
+                current_mc = self._server_info.mc_version if self._server_info else ""
+                next_games = [v for v in games if ServerManager.is_version_after(v, current_mc)] or games
                 mc_values.clear()
                 mc_values.extend(next_games)
-                loader_values.clear()
-                loader_values.extend(next_loaders)
                 mc_row.set_model(Gtk.StringList.new(mc_values or [_("No versions found")]))
                 if mc_values:
                     mc_row.set_selected(0)
-                # Automatically use the newest loader (first in list)
-                if loader_values:
-                    selected_loader["value"] = loader_values[0]
-                    fabric_version_row.set_subtitle(loader_values[0])
+                    update_loaders_for_mc(mc_values[0])
                 validate()
                 return False
 
             GLib.idle_add(loaded)
 
         def show_mod_review(*_args):
-            if not mc_values or not loader_values:
+            if not mc_values:
                 return
             selected_mc["value"] = selected_mc_version()
             if not selected_mc["value"]:
                 return
-            # Use the automatically selected newest loader
-            selected_loader["value"] = loader_values[0]
+            loader_idx = fabric_version_row.get_selected()
+            if loader_values and loader_idx < len(loader_values):
+                selected_loader["value"] = loader_values[loader_idx]
+            else:
+                selected_loader["value"] = ""
             primary_btn.set_sensitive(False)
             primary_btn.set_label(_("Update"))
             cancel_btn.set_label(_("Back"))

@@ -77,9 +77,9 @@ class JavaManager:
         if managed_path:
             return managed_path
 
-        # Fall back to system java if it matches
+        # Fall back to system java ONLY if system java matches the requested major version
         self._ensure_system_java_detected()
-        if self._system_java_version and self._system_java_version >= java_version:
+        if self._system_java_version and self._system_java_version == java_version:
             return shutil.which("java")
 
         return None

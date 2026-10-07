@@ -182,14 +182,12 @@ class PropertiesView(Gtk.Box):
         self._connect_auto_save_signals()
 
     def _on_java_version_changed(self, *_args) -> None:
-        """Save Java version selection to server info."""
+        """Save Java version selection to server info and sync in-memory process."""
         if self._suppress_changes or not self._server_manager or not self._server_info:
             return
         idx = self._java_version_row.get_selected()
         java_ver = COMMON_JAVA_VERSIONS[idx] if idx < len(COMMON_JAVA_VERSIONS) else 21
-        self._server_info.java_version = java_ver
-        self._server_manager._save()
-        self._server_manager.emit_on_main_thread("server-changed", self._server_info.id)
+        self._server_manager.update_server_java_version(self._server_info.id, java_ver)
         self._check_restart_banner()
 
     def _check_restart_banner(self) -> None:

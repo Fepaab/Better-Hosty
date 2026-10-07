@@ -206,6 +206,23 @@ class ServerManager(EventEmitter):
                 proc.ram_mb = ram_mb
             self.emit_on_main_thread("server-changed", server_id)
 
+    def update_server_java_version(self, server_id: str, java_version: int):
+        """Update Java version for a server and sync the process java_path in memory."""
+        info = self._servers.get(server_id)
+        if info:
+            info.java_version = java_version
+            self._save()
+            java_path = (
+                self.java_manager.get_java_path(java_version)
+                or self.java_manager.get_java_for_mc(info.mc_version)
+                or shutil.which("java")
+                or "java"
+            )
+            proc = self._processes.get(server_id)
+            if proc:
+                proc.java_path = java_path
+            self.emit_on_main_thread("server-changed", server_id)
+
     def update_server_version(self, server_id: str, mc_version: str) -> tuple[bool, str]:
         """Update the Minecraft and Fabric version for a server."""
         return self.update_server_runtime(server_id, mc_version, None)
@@ -421,10 +438,16 @@ class ServerManager(EventEmitter):
 
         info.mc_version = mc_version
         info.loader_version = loader_version
+        info.java_version = java_req
         self._save()
         existing_process = self._processes.get(server_id)
         if existing_process:
-            existing_process.java_path = self.java_manager.get_java_path(info.java_version) or "java"
+            existing_process.java_path = (
+                self.java_manager.get_java_path(java_req)
+                or self.java_manager.get_java_for_mc(mc_version)
+                or shutil.which("java")
+                or "java"
+            )
         self.emit_on_main_thread("server-changed", server_id)
         progress(1.0, _("Server runtime updated"))
 
@@ -1112,7 +1135,14 @@ class ServerManager(EventEmitter):
         if server_id not in self._processes:
             java_path = self.java_manager.get_java_path(info.java_version)
             if not java_path:
-                java_path = shutil.which("java")
+                try:
+                    ok, _msg = self.java_manager.download_jre_sync(info.java_version)
+                    if ok:
+                        java_path = self.java_manager.get_java_path(info.java_version)
+                except Exception as e:
+                    print(f"Failed to auto-download JRE {info.java_version}: {e}")
+            if not java_path:
+                java_path = self.java_manager.get_java_for_mc(info.mc_version) or shutil.which("java") or "java"
 
             config = self.get_config(server_id)
             max_players = 20
